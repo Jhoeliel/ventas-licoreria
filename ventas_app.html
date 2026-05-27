@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Registro de Ventas</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181c27;
+    --surface2: #1e2336;
+    --border: #2a2f45;
+    --accent: #4f8ef7;
+    --accent2: #34d399;
+    --danger: #f87171;
+    --warn: #fbbf24;
+    --text: #e8eaf0;
+    --text2: #8891aa;
+    --text3: #4a5270;
+    --mono: 'DM Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+
+  /* LOGIN */
+  #login-screen {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at 30% 40%, #1a2540 0%, #0f1117 60%);
+  }
+  .login-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 48px 40px; text-align: center;
+    max-width: 360px; width: 90%;
+  }
+  .login-card h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  .login-card p { color: var(--text2); font-size: 13px; margin-bottom: 32px; }
+  .btn-google {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    background: #fff; color: #333; border: none; border-radius: 8px;
+    padding: 12px 24px; font-family: var(--sans); font-size: 14px; font-weight: 500;
+    cursor: pointer; width: 100%; transition: box-shadow .2s;
+  }
+  .btn-google:hover { box-shadow: 0 4px 20px rgba(79,142,247,.25); }
+  .login-logo { font-family: var(--mono); font-size: 11px; color: var(--text3); margin-bottom: 24px; letter-spacing: 2px; text-transform: uppercase; }
+
+  /* LAYOUT */
+  #app { display: none; flex-direction: column; min-height: 100vh; }
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 16px; height: 52px; display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .app-title { font-family: var(--mono); font-size: 13px; color: var(--text2); letter-spacing: 1px; }
+  .user-badge {
+    font-size: 11px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 10px; color: var(--text2);
+    max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .btn-logout { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 6px; }
+  .btn-logout:hover { color: var(--danger); }
+
+  /* NAV */
+  nav {
+    display: flex; background: var(--surface); border-bottom: 1px solid var(--border);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  .nav-btn {
+    flex: none; padding: 10px 20px; background: none; border: none; color: var(--text2);
+    font-family: var(--sans); font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all .2s; white-space: nowrap;
+  }
+  .nav-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .nav-btn:hover:not(.active) { color: var(--text); }
+
+  /* MAIN */
+  main { flex: 1; padding: 16px; max-width: 700px; margin: 0 auto; width: 100%; }
+
+  /* PANELS */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* CARDS */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 12px;
+  }
+  .card-title { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; font-family: var(--mono); }
+
+  /* SEARCH */
+  .search-wrap { position: relative; margin-bottom: 12px; }
+  .search-wrap input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px 10px 36px; color: var(--text);
+    font-family: var(--sans); font-size: 14px; outline: none;
+    transition: border-color .2s;
+  }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-wrap::before {
+    content: '⌕'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--text3); font-size: 16px; pointer-events: none;
+  }
+  .search-results {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    max-height: 280px; overflow-y: auto; display: none;
+  }
+  .search-results.open { display: block; }
+  .result-item {
+    padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border);
+    transition: background .15s;
+  }
+  .result-item:last-child { border-bottom: none; }
+  .result-item:hover { background: var(--surface); }
+  .result-item .prod-name { font-size: 13px; }
+  .result-item .prod-meta { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-top: 2px; }
+
+  /* SELECTED PRODUCT */
+  .selected-product {
+    background: var(--surface2); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; display: none;
+  }
+  .selected-product.visible { display: block; }
+  .sel-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .sel-meta { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+
+  /* INPUTS ROW */
+  .inputs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .input-group label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+  .input-group input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; color: var(--text);
+    font-family: var(--mono); font-size: 14px; outline: none; transition: border-color .2s;
+  }
+  .input-group input:focus { border-color: var(--accent); }
+  .ref-price { font-size: 11px; color: var(--accent2); margin-top: 4px; font-family: var(--mono); }
+
+  /* BUTTONS */
+  .btn {
+    padding: 10px 20px; border-radius: 8px; border: none; font-family: var(--sans);
+    font-size: 13px; font-weight: 500; cursor: pointer; transition: all .2s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #3a7de0; }
+  .btn-primary:disabled { background: var(--border); color: var(--text3); cursor: not-allowed; }
+  .btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: #fff; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-full { width: 100%; }
+
+  /* VENTAS LIST */
+  .venta-item {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 10px 0; border-bottom: 1px solid var(--border); gap: 8px;
+  }
+  .venta-item:last-child { border-bottom: none; }
+  .venta-item.anulada { opacity: .45; }
+  .venta-info { flex: 1; min-width: 0; }
+  .venta-nombre { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .venta-meta { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-top: 2px; }
+  .venta-importe { font-family: var(--mono); font-size: 14px; color: var(--accent2); white-space: nowrap; }
+  .badge {
+    display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    font-family: var(--mono); margin-left: 6px;
+  }
+  .badge-anulada { background: rgba(248,113,113,.15); color: var(--danger); }
+  .badge-venta { background: rgba(52,211,153,.1); color: var(--accent2); }
+
+  /* REPORTE */
+  .reporte-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+  }
+  .fecha-selector {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; padding: 8px 10px; text-align: left; font-family: var(--mono); border-bottom: 1px solid var(--border); }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  .td-mono { font-family: var(--mono); }
+  .td-num { text-align: right; font-family: var(--mono); }
+  .totals-row td { color: var(--accent2); font-weight: 600; border-top: 1px solid var(--border); }
+
+  /* TOAST */
+  #toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 18px; font-size: 13px; z-index: 999; transition: transform .3s;
+    white-space: nowrap; max-width: 90vw; text-align: center;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.success { border-color: var(--accent2); color: var(--accent2); }
+  #toast.error { border-color: var(--danger); color: var(--danger); }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200;
+    display: none; align-items: center; justify-content: center; padding: 16px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; max-width: 400px; width: 100%;
+  }
+  .modal h3 { font-size: 16px; margin-bottom: 8px; }
+  .modal p { color: var(--text2); font-size: 13px; margin-bottom: 16px; }
+  .modal textarea {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; color: var(--text); font-family: var(--sans);
+    font-size: 13px; resize: vertical; min-height: 80px; outline: none; margin-bottom: 12px;
+  }
+  .modal textarea:focus { border-color: var(--danger); }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* CONFIG */
+  .config-group { margin-bottom: 16px; }
+  .config-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+  .config-group input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px; color: var(--text); font-family: var(--mono);
+    font-size: 12px; outline: none;
+  }
+  .config-group input:focus { border-color: var(--accent); }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text3); font-size: 13px; }
+
+  /* SPINNER */
+  .spinner {
+    width: 18px; height: 18px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .7s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-row { display: flex; align-items: center; gap: 10px; color: var(--text2); font-size: 13px; padding: 12px 0; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">Sistema de Ventas</div>
+    <h1>Bienvenido</h1>
+    <p>Inicia sesión con tu cuenta de Google para continuar</p>
+    <button class="btn-google" onclick="iniciarLogin()">
+      <svg width="18" height="18" viewBox="0 0 18 18">
+        <path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/>
+        <path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/>
+        <path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/>
+        <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/>
+      </svg>
+      Continuar con Google
+    </button>
+    <p id="login-error" style="color:var(--danger);font-size:12px;margin-top:12px;display:none;"></p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div class="header-left">
+      <span class="app-title">VENTAS</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="user-badge" id="user-email-badge"></span>
+      <button class="btn-logout" onclick="cerrarSesion()">Salir</button>
+    </div>
+  </header>
+
+  <nav>
+    <button class="nav-btn active" onclick="mostrarPanel('panel-registro', this)">+ Nueva Venta</button>
+    <button class="nav-btn" onclick="mostrarPanel('panel-historial', this); cargarHistorialHoy()">Mis Ventas Hoy</button>
+    <button class="nav-btn" onclick="mostrarPanel('panel-reporte', this); cargarReporte()">Reporte del Día</button>
+    <button class="nav-btn" onclick="mostrarPanel('panel-config', this)">⚙ Config</button>
+  </nav>
+
+  <main>
+
+    <!-- PANEL REGISTRO -->
+    <div class="panel active" id="panel-registro">
+      <div class="card">
+        <div class="card-title">Buscar Producto</div>
+        <div class="search-wrap">
+          <input type="text" id="search-input" placeholder="Buscar por nombre o código..." autocomplete="off" oninput="buscarProducto(this.value)">
+        </div>
+        <div class="search-results" id="search-results"></div>
+      </div>
+
+      <div class="selected-product" id="selected-product">
+        <div class="sel-name" id="sel-name"></div>
+        <div class="sel-meta" id="sel-meta"></div>
+      </div>
+
+      <div class="card" id="card-inputs" style="display:none;">
+        <div class="card-title">Datos de la Venta</div>
+        <div class="inputs-row">
+          <div class="input-group">
+            <label>Cantidad</label>
+            <input type="number" id="input-cantidad" min="0.01" step="0.01" placeholder="0" oninput="actualizarRef()">
+          </div>
+          <div class="input-group">
+            <label>Importe S/ (manual)</label>
+            <input type="number" id="input-importe" min="0" step="0.01" placeholder="0.00">
+            <div class="ref-price" id="ref-price"></div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" id="btn-registrar" onclick="registrarVenta()">Registrar Venta</button>
+      </div>
+    </div>
+
+    <!-- PANEL HISTORIAL -->
+    <div class="panel" id="panel-historial">
+      <div class="card">
+        <div class="card-title">Mis registros de hoy — <span id="fecha-hoy-label"></span></div>
+        <div id="historial-list"><div class="empty-state">Cargando...</div></div>
+      </div>
+    </div>
+
+    <!-- PANEL REPORTE -->
+    <div class="panel" id="panel-reporte">
+      <div class="card">
+        <div class="reporte-header">
+          <div class="card-title" style="margin:0;">Reporte del día</div>
+          <input type="date" class="fecha-selector" id="reporte-fecha" onchange="cargarReporte()">
+        </div>
+        <div id="reporte-content"><div class="empty-state">Cargando...</div></div>
+      </div>
+    </div>
+
+    <!-- PANEL CONFIG -->
+    <div class="panel" id="panel-config">
+      <div class="card">
+        <div class="card-title">Configuración</div>
+        <div class="config-group">
+          <label>ID del Google Spreadsheet</label>
+          <input type="text" id="cfg-sheet-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+        </div>
+        <div class="config-group">
+          <label>Nombre de hoja — Productos</label>
+          <input type="text" id="cfg-hoja-productos" placeholder="Productos">
+        </div>
+        <div class="config-group">
+          <label>Nombre de hoja — Ventas</label>
+          <input type="text" id="cfg-hoja-ventas" placeholder="Ventas">
+        </div>
+        <button class="btn btn-primary" onclick="guardarConfig()">Guardar configuración</button>
+        <div style="margin-top:16px;">
+          <button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);" onclick="recargarProductos()">↺ Recargar catálogo de productos</button>
+        </div>
+        <div id="cfg-status" style="margin-top:10px;font-size:12px;color:var(--text2);"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Instrucciones</div>
+        <p style="font-size:12px;color:var(--text2);line-height:1.7;">
+          1. Comparte tu Google Sheet con la cuenta de servicio o asegúrate que esté compartido con tu Gmail.<br>
+          2. La hoja <b style="color:var(--text);">Productos</b> debe tener columnas: <span style="font-family:var(--mono);color:var(--accent);">Código | Nombre | Unidad | Precio</span><br>
+          3. La hoja <b style="color:var(--text);">Ventas</b> se crea automáticamente si no existe.<br>
+          4. Ingresa el ID del spreadsheet y guarda la configuración.
+        </p>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MODAL ANULACION -->
+<div class="modal-overlay" id="modal-anulacion">
+  <div class="modal">
+    <h3>Anular registro</h3>
+    <p>Esta acción quedará registrada. Indica el motivo de la anulación.</p>
+    <textarea id="motivo-anulacion" placeholder="Motivo de la anulación..."></textarea>
+    <div class="modal-btns">
+      <button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn btn-sm btn-danger" onclick="confirmarAnulacion()">Confirmar anulación</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- Google API -->
+<script src="https://apis.google.com/js/api.js"></script>
+
+<script>
+// ============================================================
+// CONFIGURACIÓN — cambia estos valores
+// ============================================================
+var CLIENT_ID = '1087716265745-or6sjvjse35gtvs4ammj51keqbh3av9j.apps.googleusercontent.com';
+var SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+// ============================================================
+// ESTADO
+// ============================================================
+var estado = {
+  usuario: null,
+  tokenAcceso: null,
+  productos: [],
+  productoSeleccionado: null,
+  ventaParaAnular: null,
+  config: {
+    sheetId: '',
+    hojaProductos: 'Productos',
+    hojaVentas: 'Ventas'
+  }
+};
+
+// ============================================================
+// INIT
+// ============================================================
+window.onload = function() {
+  cargarConfigLocal();
+  var tokenGuardado = sessionStorage.getItem('access_token');
+  var emailGuardado = sessionStorage.getItem('user_email');
+  if (tokenGuardado && emailGuardado) {
+    estado.tokenAcceso = tokenGuardado;
+    estado.usuario = emailGuardado;
+    mostrarApp();
+  }
+  var hoy = new Date().toISOString().slice(0,10);
+  document.getElementById('reporte-fecha').value = hoy;
+  document.getElementById('fecha-hoy-label').textContent = formatFecha(hoy);
+};
+
+// ============================================================
+// AUTH
+// ============================================================
+function iniciarLogin() {
+  if (typeof google === 'undefined') {
+    mostrarError('Error: No se pudo cargar Google Identity. Verifica tu conexión.');
+    return;
+  }
+  var client = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: function(resp) {
+      if (resp.error) {
+        mostrarError('Error de autenticación: ' + resp.error);
+        return;
+      }
+      estado.tokenAcceso = resp.access_token;
+      sessionStorage.setItem('access_token', resp.access_token);
+      // Obtener info del usuario
+      fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { 'Authorization': 'Bearer ' + resp.access_token }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(info) {
+        estado.usuario = info.email;
+        sessionStorage.setItem('user_email', info.email);
+        mostrarApp();
+      });
+    }
+  });
+  client.requestAccessToken();
+}
+
+function cerrarSesion() {
+  sessionStorage.clear();
+  estado.tokenAcceso = null;
+  estado.usuario = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+function mostrarApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('user-email-badge').textContent = estado.usuario;
+  if (estado.config.sheetId) {
+    cargarProductos();
+  }
+}
+
+function mostrarError(msg) {
+  var el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ============================================================
+// CONFIG
+// ============================================================
+function cargarConfigLocal() {
+  var cfg = localStorage.getItem('ventas_config');
+  if (cfg) {
+    try {
+      estado.config = JSON.parse(cfg);
+      document.getElementById('cfg-sheet-id').value = estado.config.sheetId || '';
+      document.getElementById('cfg-hoja-productos').value = estado.config.hojaProductos || 'Productos';
+      document.getElementById('cfg-hoja-ventas').value = estado.config.hojaVentas || 'Ventas';
+    } catch(e) {}
+  }
+}
+
+function guardarConfig() {
+  estado.config.sheetId = document.getElementById('cfg-sheet-id').value.trim();
+  estado.config.hojaProductos = document.getElementById('cfg-hoja-productos').value.trim() || 'Productos';
+  estado.config.hojaVentas = document.getElementById('cfg-hoja-ventas').value.trim() || 'Ventas';
+  localStorage.setItem('ventas_config', JSON.stringify(estado.config));
+  document.getElementById('cfg-status').textContent = '✓ Configuración guardada';
+  toast('Configuración guardada', 'success');
+  cargarProductos();
+}
+
+function recargarProductos() {
+  estado.productos = [];
+  cargarProductos();
+}
+
+// ============================================================
+// SHEETS API HELPER
+// ============================================================
+function sheetsGet(rango) {
+  var url = 'https://sheets.googleapis.com/v4/spreadsheets/' +
+    encodeURIComponent(estado.config.sheetId) +
+    '/values/' + encodeURIComponent(rango);
+  return fetch(url, {
+    headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso }
+  }).then(function(r) { return r.json(); });
+}
+
+function sheetsAppend(rango, valores) {
+  var url = 'https://sheets.googleapis.com/v4/spreadsheets/' +
+    encodeURIComponent(estado.config.sheetId) +
+    '/values/' + encodeURIComponent(rango) +
+    ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + estado.tokenAcceso,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ values: valores })
+  }).then(function(r) { return r.json(); });
+}
+
+// ============================================================
+// PRODUCTOS
+// ============================================================
+function cargarProductos() {
+  if (!estado.config.sheetId) return;
+  document.getElementById('cfg-status').textContent = 'Cargando productos...';
+  var hoja = estado.config.hojaProductos;
+  sheetsGet(hoja + '!A:D')
+  .then(function(data) {
+    if (!data.values || data.values.length < 2) {
+      document.getElementById('cfg-status').textContent = 'Sin productos encontrados en la hoja.';
+      return;
+    }
+    var filas = data.values;
+    var header = filas[0];
+    estado.productos = [];
+    for (var i = 1; i < filas.length; i++) {
+      var f = filas[i];
+      if (!f[0] && !f[1]) continue;
+      estado.productos.push({
+        codigo: f[0] || '',
+        nombre: f[1] || '',
+        unidad: f[2] || '',
+        precio: parseFloat(f[3]) || 0
+      });
+    }
+    document.getElementById('cfg-status').textContent = '✓ ' + estado.productos.length + ' productos cargados';
+    toast(estado.productos.length + ' productos cargados', 'success');
+  })
+  .catch(function(e) {
+    document.getElementById('cfg-status').textContent = 'Error al cargar productos';
+    toast('Error al cargar productos', 'error');
+  });
+}
+
+// ============================================================
+// BÚSQUEDA
+// ============================================================
+var searchTimeout = null;
+function buscarProducto(q) {
+  clearTimeout(searchTimeout);
+  if (q.length < 2) {
+    cerrarResultados();
+    return;
+  }
+  searchTimeout = setTimeout(function() {
+    var ql = q.toLowerCase();
+    var resultados = estado.productos.filter(function(p) {
+      return p.nombre.toLowerCase().indexOf(ql) !== -1 ||
+             p.codigo.toLowerCase().indexOf(ql) !== -1;
+    }).slice(0, 20);
+    renderResultados(resultados);
+  }, 150);
+}
+
+function renderResultados(lista) {
+  var el = document.getElementById('search-results');
+  if (lista.length === 0) {
+    el.innerHTML = '<div class="result-item" style="color:var(--text3);">Sin resultados</div>';
+    el.classList.add('open');
+    return;
+  }
+  el.innerHTML = lista.map(function(p) {
+    return '<div class="result-item" onclick="seleccionarProducto(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')">' +
+      '<div class="prod-name">' + esc(p.nombre) + '</div>' +
+      '<div class="prod-meta">' + esc(p.codigo) + ' · ' + esc(p.unidad) + ' · S/ ' + p.precio.toFixed(2) + '</div>' +
+      '</div>';
+  }).join('');
+  el.classList.add('open');
+}
+
+function cerrarResultados() {
+  document.getElementById('search-results').classList.remove('open');
+}
+
+function seleccionarProducto(p) {
+  estado.productoSeleccionado = p;
+  document.getElementById('search-input').value = '';
+  cerrarResultados();
+  document.getElementById('sel-name').textContent = p.nombre;
+  document.getElementById('sel-meta').textContent = p.codigo + ' · ' + p.unidad + ' · S/ ' + p.precio.toFixed(2);
+  document.getElementById('selected-product').classList.add('visible');
+  document.getElementById('card-inputs').style.display = 'block';
+  document.getElementById('input-cantidad').value = '';
+  document.getElementById('input-importe').value = '';
+  document.getElementById('ref-price').textContent = '';
+  document.getElementById('input-cantidad').focus();
+}
+
+function actualizarRef() {
+  var p = estado.productoSeleccionado;
+  if (!p) return;
+  var qty = parseFloat(document.getElementById('input-cantidad').value);
+  if (isNaN(qty) || qty <= 0) {
+    document.getElementById('ref-price').textContent = '';
+    return;
+  }
+  var ref = (qty * p.precio).toFixed(2);
+  document.getElementById('ref-price').textContent = '↗ Ref: S/ ' + ref;
+}
+
+// ============================================================
+// REGISTRAR VENTA
+// ============================================================
+function registrarVenta() {
+  var p = estado.productoSeleccionado;
+  if (!p) { toast('Selecciona un producto', 'error'); return; }
+  var cantidad = parseFloat(document.getElementById('input-cantidad').value);
+  var importe = parseFloat(document.getElementById('input-importe').value);
+  if (isNaN(cantidad) || cantidad <= 0) { toast('Ingresa una cantidad válida', 'error'); return; }
+  if (isNaN(importe) || importe < 0) { toast('Ingresa un importe válido', 'error'); return; }
+
+  var ahora = new Date();
+  var timestamp = ahora.toISOString();
+  var fecha = ahora.toISOString().slice(0,10);
+  var hora = ahora.toTimeString().slice(0,8);
+  var refCalc = (cantidad * p.precio).toFixed(2);
+
+  var btn = document.getElementById('btn-registrar');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+
+  var hoja = estado.config.hojaVentas;
+  var fila = [[
+    timestamp, fecha, hora,
+    estado.usuario,
+    p.codigo, p.nombre, p.unidad,
+    cantidad, importe, refCalc,
+    'VENTA', '', ''
+  ]];
+
+  sheetsAppend(hoja + '!A:M', fila)
+  .then(function(resp) {
+    if (resp.error) throw new Error(resp.error.message);
+    toast('Venta registrada ✓', 'success');
+    // reset
+    estado.productoSeleccionado = null;
+    document.getElementById('selected-product').classList.remove('visible');
+    document.getElementById('card-inputs').style.display = 'none';
+    document.getElementById('input-cantidad').value = '';
+    document.getElementById('input-importe').value = '';
+    document.getElementById('ref-price').textContent = '';
+  })
+  .catch(function(e) {
+    toast('Error al guardar: ' + e.message, 'error');
+  })
+  .finally(function() {
+    btn.disabled = false;
+    btn.textContent = 'Registrar Venta';
+  });
+}
+
+// ============================================================
+// HISTORIAL HOY
+// ============================================================
+function cargarHistorialHoy() {
+  var el = document.getElementById('historial-list');
+  el.innerHTML = '<div class="loading-row"><div class="spinner"></div> Cargando...</div>';
+  var hoja = estado.config.hojaVentas;
+  sheetsGet(hoja + '!A:M')
+  .then(function(data) {
+    if (!data.values || data.values.length < 2) {
+      el.innerHTML = '<div class="empty-state">Sin registros hoy</div>';
+      return;
+    }
+    var hoy = new Date().toISOString().slice(0,10);
+    var filas = data.values.slice(1).filter(function(f) {
+      return f[1] === hoy && f[3] === estado.usuario;
+    });
+    if (filas.length === 0) {
+      el.innerHTML = '<div class="empty-state">No tienes registros hoy</div>';
+      return;
+    }
+    // Invertir para ver más recientes primero
+    filas = filas.reverse();
+    el.innerHTML = filas.map(function(f, idx) {
+      var esAnulada = f[10] === 'ANULACION';
+      var timestamp = f[0];
+      return '<div class="venta-item' + (esAnulada ? ' anulada' : '') + '">' +
+        '<div class="venta-info">' +
+          '<div class="venta-nombre">' + esc(f[5] || '') +
+            '<span class="badge ' + (esAnulada ? 'badge-anulada' : 'badge-venta') + '">' +
+            (esAnulada ? 'ANULADA' : 'VENTA') + '</span>' +
+          '</div>' +
+          '<div class="venta-meta">' + esc(f[4] || '') + ' · ' + esc(f[6] || '') + ' · x' + esc(f[7] || '') + ' · ' + esc(f[2] || '') + '</div>' +
+          (esAnulada && f[12] ? '<div class="venta-meta" style="color:var(--danger);">Motivo: ' + esc(f[12]) + '</div>' : '') +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">' +
+          '<div class="venta-importe">S/ ' + parseFloat(f[8] || 0).toFixed(2) + '</div>' +
+          (!esAnulada ? '<button class="btn btn-sm btn-danger" onclick="abrirAnulacion(\'' + timestamp.replace(/'/g,"\\'") + '\')">Anular</button>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+  })
+  .catch(function() {
+    el.innerHTML = '<div class="empty-state">Error al cargar historial</div>';
+  });
+}
+
+// ============================================================
+// ANULACIÓN
+// ============================================================
+function abrirAnulacion(timestamp) {
+  estado.ventaParaAnular = timestamp;
+  document.getElementById('motivo-anulacion').value = '';
+  document.getElementById('modal-anulacion').classList.add('open');
+}
+
+function cerrarModal() {
+  document.getElementById('modal-anulacion').classList.remove('open');
+  estado.ventaParaAnular = null;
+}
+
+function confirmarAnulacion() {
+  var motivo = document.getElementById('motivo-anulacion').value.trim();
+  if (!motivo) { toast('Ingresa el motivo de anulación', 'error'); return; }
+
+  var ahora = new Date();
+  var timestamp = ahora.toISOString();
+  var fecha = ahora.toISOString().slice(0,10);
+  var hora = ahora.toTimeString().slice(0,8);
+
+  var hoja = estado.config.hojaVentas;
+  var fila = [[
+    timestamp, fecha, hora,
+    estado.usuario,
+    '', '', '', '', '', '',
+    'ANULACION', estado.ventaParaAnular, motivo
+  ]];
+
+  sheetsAppend(hoja + '!A:M', fila)
+  .then(function(resp) {
+    if (resp.error) throw new Error(resp.error.message);
+    cerrarModal();
+    toast('Anulación registrada', 'success');
+    cargarHistorialHoy();
+  })
+  .catch(function(e) {
+    toast('Error: ' + e.message, 'error');
+  });
+}
+
+// ============================================================
+// REPORTE DEL DÍA
+// ============================================================
+function cargarReporte() {
+  var fecha = document.getElementById('reporte-fecha').value;
+  var el = document.getElementById('reporte-content');
+  el.innerHTML = '<div class="loading-row"><div class="spinner"></div> Cargando reporte...</div>';
+  var hoja = estado.config.hojaVentas;
+  sheetsGet(hoja + '!A:M')
+  .then(function(data) {
+    if (!data.values || data.values.length < 2) {
+      el.innerHTML = '<div class="empty-state">Sin datos</div>';
+      return;
+    }
+    var filas = data.values.slice(1);
+    // Solo ventas activas de la fecha (excluir anulaciones)
+    // Una venta se considera anulada si existe una fila ANULACION con ref a su timestamp
+    var anuladas = {};
+    filas.forEach(function(f) {
+      if (f[10] === 'ANULACION' && f[11]) {
+        anuladas[f[11]] = true;
+      }
+    });
+    var ventasDia = filas.filter(function(f) {
+      return f[1] === fecha && f[10] === 'VENTA' && !anuladas[f[0]];
+    });
+
+    if (ventasDia.length === 0) {
+      el.innerHTML = '<div class="empty-state">Sin ventas para esta fecha</div>';
+      return;
+    }
+
+    // Consolidar por producto
+    var consolidado = {};
+    ventasDia.forEach(function(f) {
+      var key = f[4] + '|' + f[5]; // codigo|nombre
+      if (!consolidado[key]) {
+        consolidado[key] = { codigo: f[4], nombre: f[5], unidad: f[6], cantidad: 0, importe: 0 };
+      }
+      consolidado[key].cantidad += parseFloat(f[7]) || 0;
+      consolidado[key].importe += parseFloat(f[8]) || 0;
+    });
+
+    var items = Object.values(consolidado).sort(function(a,b) {
+      return a.nombre.localeCompare(b.nombre);
+    });
+
+    var totalCantidad = 0;
+    var totalImporte = 0;
+    items.forEach(function(i) { totalCantidad += i.cantidad; totalImporte += i.importe; });
+
+    var html = '<p style="font-size:12px;color:var(--text2);margin-bottom:12px;">' +
+      ventasDia.length + ' transacciones · ' + items.length + ' productos distintos</p>';
+    html += '<div style="overflow-x:auto;">';
+    html += '<table><thead><tr>' +
+      '<th>Producto</th><th>Und</th><th class="td-num">Cant.</th><th class="td-num">Importe S/</th>' +
+      '</tr></thead><tbody>';
+    items.forEach(function(i) {
+      html += '<tr>' +
+        '<td>' + esc(i.nombre) + '<br><span style="font-size:10px;color:var(--text3);font-family:var(--mono);">' + esc(i.codigo) + '</span></td>' +
+        '<td class="td-mono">' + esc(i.unidad) + '</td>' +
+        '<td class="td-num">' + i.cantidad.toFixed(2) + '</td>' +
+        '<td class="td-num" style="color:var(--accent2);">' + i.importe.toFixed(2) + '</td>' +
+        '</tr>';
+    });
+    html += '<tr class="totals-row"><td colspan="2"><b>TOTAL</b></td>' +
+      '<td class="td-num"><b>' + totalCantidad.toFixed(2) + '</b></td>' +
+      '<td class="td-num"><b>' + totalImporte.toFixed(2) + '</b></td></tr>';
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  })
+  .catch(function() {
+    el.innerHTML = '<div class="empty-state">Error al cargar reporte</div>';
+  });
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function mostrarPanel(id, btn) {
+  document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function formatFecha(iso) {
+  var p = iso.split('-');
+  return p[2] + '/' + p[1] + '/' + p[0];
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+var toastTimer;
+function toast(msg, tipo) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + (tipo || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { el.className = ''; }, 3000);
+}
+
+// Cerrar resultados al hacer click afuera
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.search-wrap') && !e.target.closest('.search-results')) {
+    cerrarResultados();
+  }
+});
+</script>
+</body>
+</html>
