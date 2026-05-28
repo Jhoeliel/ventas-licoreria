@@ -103,28 +103,17 @@
     content: '⌕'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
     color: var(--text3); font-size: 16px; pointer-events: none;
   }
-  .search-results {
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-    max-height: 280px; overflow-y: auto; display: none;
+  .prod-item {
+    padding: 10px 4px; cursor: pointer; border-bottom: 1px solid var(--border);
+    transition: background .15s; border-radius: 6px;
   }
-  .search-results.open { display: block; }
-  .result-item {
-    padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border);
-    transition: background .15s;
-  }
-  .result-item:last-child { border-bottom: none; }
-  .result-item:hover { background: var(--surface); }
-  .result-item .prod-name { font-size: 13px; }
-  .result-item .prod-meta { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-top: 2px; }
+  .prod-item:last-child { border-bottom: none; }
+  .prod-item:hover { background: var(--surface2); padding-left: 8px; }
+  .prod-item.selected { background: rgba(79,142,247,.1); border-left: 2px solid var(--accent); padding-left: 8px; }
+  .prod-item .prod-name { font-size: 13px; }
+  .prod-item .prod-meta { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-top: 2px; }
 
-  /* SELECTED PRODUCT */
-  .selected-product {
-    background: var(--surface2); border: 1px solid var(--accent);
-    border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; display: none;
-  }
-  .selected-product.visible { display: block; }
-  .sel-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
-  .sel-meta { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+
 
   /* INPUTS ROW */
   .inputs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
@@ -282,21 +271,15 @@
 
     <!-- PANEL REGISTRO -->
     <div class="panel active" id="panel-registro">
-      <div class="card">
-        <div class="card-title">Buscar Producto</div>
-        <div class="search-wrap">
-          <input type="text" id="search-input" placeholder="Buscar por nombre o código..." autocomplete="off" oninput="buscarProducto(this.value)">
-        </div>
-        <div class="search-results" id="search-results"></div>
-      </div>
-
-      <div class="selected-product" id="selected-product">
-        <div class="sel-name" id="sel-name"></div>
-        <div class="sel-meta" id="sel-meta"></div>
-      </div>
 
       <div class="card" id="card-inputs" style="display:none;">
-        <div class="card-title">Datos de la Venta</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <div class="sel-name" id="sel-name" style="font-size:14px;font-weight:500;"></div>
+            <div class="sel-meta" id="sel-meta" style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:2px;"></div>
+          </div>
+          <button onclick="limpiarSeleccion()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px 8px;">✕</button>
+        </div>
         <div class="inputs-row">
           <div class="input-group">
             <label>Cantidad</label>
@@ -309,6 +292,14 @@
           </div>
         </div>
         <button class="btn btn-primary btn-full" id="btn-registrar" onclick="registrarVenta()">Registrar Venta</button>
+      </div>
+
+      <div class="card">
+        <div class="search-wrap" style="margin-bottom:8px;">
+          <input type="text" id="search-input" placeholder="Buscar por nombre o código..." autocomplete="off" oninput="filtrarLista(this.value)">
+        </div>
+        <div id="productos-count" style="font-size:11px;color:var(--text3);margin-bottom:8px;font-family:var(--mono);"></div>
+        <div id="productos-lista" style="max-height:55vh;overflow-y:auto;"></div>
       </div>
     </div>
 
@@ -451,8 +442,10 @@ function iniciarLogin() {
       })
       .then(function(r) { return r.json(); })
       .then(function(info) {
-        estado.usuario = info.email;
-        sessionStorage.setItem('user_email', info.email);
+        estado.usuario = info.email || '';
+        if (estado.usuario) {
+          sessionStorage.setItem('user_email', estado.usuario);
+        }
         mostrarApp();
       });
     }
@@ -645,6 +638,7 @@ function cargarProductos() {
     }
     document.getElementById('cfg-status').textContent = '✓ ' + estado.productos.length + ' productos cargados';
     toast(estado.productos.length + ' productos cargados', 'success');
+    renderListaProductos(estado.productos);
   })
   .catch(function(e) {
     document.getElementById('cfg-status').textContent = 'Error al cargar productos';
@@ -653,57 +647,63 @@ function cargarProductos() {
 }
 
 // ============================================================
-// BÚSQUEDA
+// LISTA Y BÚSQUEDA
 // ============================================================
 var searchTimeout = null;
-function buscarProducto(q) {
-  clearTimeout(searchTimeout);
-  if (q.length < 2) {
-    cerrarResultados();
-    return;
-  }
-  searchTimeout = setTimeout(function() {
-    var ql = q.toLowerCase();
-    var resultados = estado.productos.filter(function(p) {
-      return p.nombre.toLowerCase().indexOf(ql) !== -1 ||
-             p.codigo.toLowerCase().indexOf(ql) !== -1;
-    }).slice(0, 20);
-    renderResultados(resultados);
-  }, 150);
-}
 
-function renderResultados(lista) {
-  var el = document.getElementById('search-results');
-  if (lista.length === 0) {
-    el.innerHTML = '<div class="result-item" style="color:var(--text3);">Sin resultados</div>';
-    el.classList.add('open');
+function renderListaProductos(lista) {
+  var el = document.getElementById('productos-lista');
+  var count = document.getElementById('productos-count');
+  if (!lista || lista.length === 0) {
+    el.innerHTML = '<div class="empty-state">Sin resultados</div>';
+    count.textContent = '';
     return;
   }
-  el.innerHTML = lista.map(function(p) {
-    return '<div class="result-item" onclick="seleccionarProducto(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')">' +
+  count.textContent = lista.length + ' productos';
+  el.innerHTML = lista.map(function(p, i) {
+    var seleccionado = estado.productoSeleccionado && estado.productoSeleccionado.codigo === p.codigo;
+    return '<div class="prod-item' + (seleccionado ? ' selected' : '') + '" onclick="seleccionarProducto(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')">' +
       '<div class="prod-name">' + esc(p.nombre) + '</div>' +
       '<div class="prod-meta">' + esc(p.codigo) + ' · ' + esc(p.unidad) + ' · S/ ' + p.precio.toFixed(2) + '</div>' +
       '</div>';
   }).join('');
-  el.classList.add('open');
 }
 
-function cerrarResultados() {
-  document.getElementById('search-results').classList.remove('open');
+function filtrarLista(q) {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(function() {
+    if (!q || q.trim() === '') {
+      renderListaProductos(estado.productos);
+      return;
+    }
+    var ql = q.toLowerCase().trim();
+    var filtrados = estado.productos.filter(function(p) {
+      return p.nombre.toLowerCase().indexOf(ql) !== -1 ||
+             p.codigo.toLowerCase().indexOf(ql) !== -1;
+    });
+    renderListaProductos(filtrados);
+  }, 150);
 }
 
 function seleccionarProducto(p) {
   estado.productoSeleccionado = p;
-  document.getElementById('search-input').value = '';
-  cerrarResultados();
   document.getElementById('sel-name').textContent = p.nombre;
   document.getElementById('sel-meta').textContent = p.codigo + ' · ' + p.unidad + ' · S/ ' + p.precio.toFixed(2);
-  document.getElementById('selected-product').classList.add('visible');
   document.getElementById('card-inputs').style.display = 'block';
   document.getElementById('input-cantidad').value = '';
   document.getElementById('input-importe').value = '';
   document.getElementById('ref-price').textContent = '';
   document.getElementById('input-cantidad').focus();
+  // Scroll al card de inputs
+  document.getElementById('card-inputs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Refrescar lista para marcar seleccionado
+  filtrarLista(document.getElementById('search-input').value);
+}
+
+function limpiarSeleccion() {
+  estado.productoSeleccionado = null;
+  document.getElementById('card-inputs').style.display = 'none';
+  filtrarLista(document.getElementById('search-input').value);
 }
 
 function actualizarRef() {
@@ -729,6 +729,9 @@ function registrarVenta() {
   if (isNaN(cantidad) || cantidad <= 0) { toast('Ingresa una cantidad válida', 'error'); return; }
   if (isNaN(importe) || importe < 0) { toast('Ingresa un importe válido', 'error'); return; }
 
+  // Asegurar email siempre disponible
+  var emailUsuario = estado.usuario || sessionStorage.getItem('user_email') || '';
+
   var ahora = new Date();
   var timestamp = ahora.toISOString();
   var fecha = ahora.toISOString().slice(0,10);
@@ -742,7 +745,7 @@ function registrarVenta() {
   var hoja = estado.config.hojaVentas;
   var fila = [[
     timestamp, fecha, hora,
-    estado.usuario,
+    emailUsuario,
     p.codigo, p.nombre, p.unidad,
     cantidad, importe, refCalc,
     'VENTA', '', ''
@@ -842,7 +845,7 @@ function confirmarAnulacion() {
   var hoja = estado.config.hojaVentas;
   var fila = [[
     timestamp, fecha, hora,
-    estado.usuario,
+    estado.usuario || sessionStorage.getItem('user_email') || '',
     '', '', '', '', '', '',
     'ANULACION', estado.ventaParaAnular, motivo
   ]];
@@ -963,12 +966,7 @@ function toast(msg, tipo) {
   toastTimer = setTimeout(function() { el.className = ''; }, 3000);
 }
 
-// Cerrar resultados al hacer click afuera
-document.addEventListener('click', function(e) {
-  if (!e.target.closest('.search-wrap') && !e.target.closest('.search-results')) {
-    cerrarResultados();
-  }
-});
+
 </script>
 </body>
 </html>
