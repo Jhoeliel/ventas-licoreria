@@ -589,7 +589,8 @@ function recargarProductos() {
 function sheetsGet(rango) {
   var url = 'https://sheets.googleapis.com/v4/spreadsheets/' +
     encodeURIComponent(estado.config.sheetId) +
-    '/values/' + encodeURIComponent(rango);
+    '/values/' + encodeURIComponent(rango) +
+    '?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING';
   return fetch(url, {
     headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso }
   }).then(function(r) { return r.json(); });
@@ -811,7 +812,7 @@ function cargarHistorialHoy() {
           (esAnulada && f[12] ? '<div class="venta-meta" style="color:var(--danger);">Motivo: ' + esc(f[12]) + '</div>' : '') +
         '</div>' +
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">' +
-          '<div class="venta-importe">S/ ' + parseFloat(f[8] || 0).toFixed(2) + '</div>' +
+          '<div class="venta-importe">S/ ' + (parseFloat(f[8]) || 0).toFixed(2) + '</div>' +
           (!esAnulada ? '<button class="btn btn-sm btn-danger" onclick="abrirAnulacion(\'' + timestamp.replace(/'/g,"\\'") + '\')">Anular</button>' : '') +
         '</div>' +
       '</div>';
@@ -905,7 +906,7 @@ function cargarReporte() {
         consolidado[key] = { codigo: f[4], nombre: f[5], unidad: f[6], cantidad: 0, importe: 0 };
       }
       consolidado[key].cantidad += parseFloat(f[7]) || 0;
-      consolidado[key].importe += parseFloat(f[8]) || 0;
+      consolidado[key].importe += (f[8] !== undefined && f[8] !== '' ? parseFloat(f[8]) : 0);
     });
 
     var items = Object.values(consolidado).sort(function(a,b) {
