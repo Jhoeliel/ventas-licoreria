@@ -757,11 +757,14 @@ function registrarVenta() {
     toast('Venta registrada ✓', 'success');
     // reset
     estado.productoSeleccionado = null;
-    document.getElementById('selected-product').classList.remove('visible');
     document.getElementById('card-inputs').style.display = 'none';
     document.getElementById('input-cantidad').value = '';
     document.getElementById('input-importe').value = '';
     document.getElementById('ref-price').textContent = '';
+    document.getElementById('sel-name').textContent = '';
+    document.getElementById('sel-meta').textContent = '';
+    document.getElementById('search-input').value = '';
+    renderListaProductos(estado.productos);
   })
   .catch(function(e) {
     toast('Error al guardar: ' + e.message, 'error');
