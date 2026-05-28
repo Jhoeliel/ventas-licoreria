@@ -216,6 +216,26 @@
 
   .empty-state { text-align: center; padding: 40px 20px; color: var(--text3); font-size: 13px; }
 
+  /* STOCK TIPO BUTTONS */
+  .btn-tipo {
+    flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text2); font-family: var(--sans);
+    font-size: 12px; cursor: pointer; transition: all .2s; text-align: center;
+  }
+  .btn-tipo:hover { border-color: var(--accent); color: var(--text); }
+  .btn-tipo.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-tipo[id="tipo-SALIDA"].active { background: var(--danger); border-color: var(--danger); }
+  .btn-tipo[id="tipo-AJUSTE"].active { background: var(--warn); border-color: var(--warn); color: #111; }
+
+  /* STOCK BADGE */
+  .stock-badge {
+    font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 4px;
+    white-space: nowrap;
+  }
+  .stock-badge.ok { background: rgba(52,211,153,.1); color: var(--accent2); }
+  .stock-badge.low { background: rgba(251,191,36,.1); color: var(--warn); }
+  .stock-badge.zero { background: rgba(248,113,113,.1); color: var(--danger); }
+
   /* SPINNER */
   .spinner {
     width: 18px; height: 18px; border: 2px solid var(--border);
@@ -264,6 +284,7 @@
     <button class="nav-btn active" onclick="mostrarPanel('panel-registro', this)">+ Nueva Venta</button>
     <button class="nav-btn" onclick="mostrarPanel('panel-historial', this); cargarHistorialHoy()">Mis Ventas Hoy</button>
     <button class="nav-btn" onclick="mostrarPanel('panel-reporte', this); cargarReporte()">Reporte del Día</button>
+    <button class="nav-btn" onclick="mostrarPanel('panel-stock', this); cargarPanelStock()">📦 Stock</button>
     <button class="nav-btn" onclick="mostrarPanel('panel-config', this)">⚙ Config</button>
   </nav>
 
@@ -338,6 +359,10 @@
           <label>Nombre de hoja — Ventas</label>
           <input type="text" id="cfg-hoja-ventas" placeholder="Ventas">
         </div>
+        <div class="config-group">
+          <label>Nombre de hoja — Stock</label>
+          <input type="text" id="cfg-hoja-stock" placeholder="Stock">
+        </div>
         <button class="btn btn-primary" onclick="guardarConfig()">Guardar configuración</button>
         <div style="margin-top:16px;">
           <button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);" onclick="recargarProductos()">↺ Recargar catálogo de productos</button>
@@ -352,6 +377,54 @@
           3. La hoja <b style="color:var(--text);">Ventas</b> se crea automáticamente si no existe.<br>
           4. Ingresa el ID del spreadsheet y guarda la configuración.
         </p>
+      </div>
+    </div>
+
+
+    <!-- PANEL STOCK -->
+    <div class="panel" id="panel-stock">
+
+      <!-- Formulario de movimiento -->
+      <div class="card" id="card-stock-form" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <div id="stock-sel-name" style="font-size:14px;font-weight:500;"></div>
+            <div id="stock-sel-meta" style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:2px;"></div>
+          </div>
+          <button onclick="limpiarSeleccionStock()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px 8px;">✕</button>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px;">Tipo de movimiento</label>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-tipo active" id="tipo-ENTRADA" onclick="seleccionarTipo('ENTRADA')">📥 Entrada</button>
+            <button class="btn-tipo" id="tipo-SALIDA" onclick="seleccionarTipo('SALIDA')">📤 Salida</button>
+            <button class="btn-tipo" id="tipo-AJUSTE" onclick="seleccionarTipo('AJUSTE')">🎯 Ajuste</button>
+          </div>
+        </div>
+        <div class="inputs-row">
+          <div class="input-group">
+            <label id="label-cantidad-stock">Cantidad recibida</label>
+            <input type="number" id="stock-cantidad" min="0.01" step="0.01" placeholder="0">
+          </div>
+          <div class="input-group">
+            <label>Stock proyectado actual</label>
+            <input type="number" id="stock-proyectado" readonly style="opacity:.6;cursor:not-allowed;" placeholder="calculando...">
+          </div>
+        </div>
+        <div class="input-group" style="margin-bottom:12px;">
+          <label>Motivo / Observación</label>
+          <input type="text" id="stock-motivo" placeholder="ej. Compra proveedor X, merma, conteo físico...">
+        </div>
+        <button class="btn btn-primary btn-full" id="btn-registrar-stock" onclick="registrarMovimientoStock()">Registrar movimiento</button>
+      </div>
+
+      <!-- Lista de productos -->
+      <div class="card">
+        <div class="search-wrap" style="margin-bottom:8px;">
+          <input type="text" id="stock-search" placeholder="Buscar producto..." autocomplete="off" oninput="filtrarListaStock(this.value)">
+        </div>
+        <div id="stock-productos-count" style="font-size:11px;color:var(--text3);margin-bottom:8px;font-family:var(--mono);"></div>
+        <div id="stock-productos-lista" style="max-height:55vh;overflow-y:auto;"></div>
       </div>
     </div>
 
@@ -397,7 +470,8 @@ var estado = {
   config: {
     sheetId: '',
     hojaProductos: 'Productos',
-    hojaVentas: 'Ventas'
+    hojaVentas: 'Ventas',
+    hojaStock: 'Stock'
   }
 };
 
@@ -564,6 +638,9 @@ function cargarConfigLocal() {
       document.getElementById('cfg-sheet-id').value = estado.config.sheetId || '';
       document.getElementById('cfg-hoja-productos').value = estado.config.hojaProductos || 'Productos';
       document.getElementById('cfg-hoja-ventas').value = estado.config.hojaVentas || 'Ventas';
+      if (document.getElementById('cfg-hoja-stock')) {
+        document.getElementById('cfg-hoja-stock').value = estado.config.hojaStock || 'Stock';
+      }
     } catch(e) {}
   }
 }
@@ -572,6 +649,7 @@ function guardarConfig() {
   estado.config.sheetId = document.getElementById('cfg-sheet-id').value.trim();
   estado.config.hojaProductos = document.getElementById('cfg-hoja-productos').value.trim() || 'Productos';
   estado.config.hojaVentas = document.getElementById('cfg-hoja-ventas').value.trim() || 'Ventas';
+  estado.config.hojaStock = document.getElementById('cfg-hoja-stock').value.trim() || 'Stock';
   localStorage.setItem('ventas_config', JSON.stringify(estado.config));
   document.getElementById('cfg-status').textContent = '✓ Configuración guardada';
   toast('Configuración guardada', 'success');
@@ -970,6 +1048,286 @@ function toast(msg, tipo) {
   toastTimer = setTimeout(function() { el.className = ''; }, 3000);
 }
 
+
+// ============================================================
+// STOCK — ESTADO
+// ============================================================
+var stockEstado = {
+  productoSeleccionado: null,
+  tipoMovimiento: 'ENTRADA',
+  stockCalculado: {}  // cache: codigo -> cantidad proyectada
+};
+
+// ============================================================
+// STOCK — INIT PANEL
+// ============================================================
+function cargarPanelStock() {
+  if (!estado.config.sheetId) {
+    toast('Configura el Spreadsheet primero', 'error');
+    return;
+  }
+  if (estado.productos.length === 0) {
+    toast('Cargando productos...', '');
+    return;
+  }
+  calcularStockProyectado().then(function() {
+    renderListaStock(estado.productos);
+  });
+}
+
+// ============================================================
+// STOCK — CALCULAR PROYECTADO
+// Lógica: desde el último AJUSTE de cada producto, sumar ENTRADAs y restar SALIDAs y VENTAs
+// ============================================================
+function calcularStockProyectado() {
+  var hojaStock = estado.config.hojaStock || 'Stock';
+  var hojaVentas = estado.config.hojaVentas || 'Ventas';
+
+  return Promise.all([
+    sheetsGet(hojaStock + '!A:J'),
+    sheetsGet(hojaVentas + '!A:M')
+  ]).then(function(results) {
+    var movStock = (results[0].values || []).slice(1);
+    var movVentas = (results[1].values || []).slice(1);
+
+    // Identificar anulaciones en ventas
+    var anuladas = {};
+    movVentas.forEach(function(f) {
+      if (f[10] === 'ANULACION' && f[11]) anuladas[f[11]] = true;
+    });
+
+    // Por producto, encontrar último AJUSTE y calcular desde ahí
+    var porProducto = {};
+    movStock.forEach(function(f) {
+      var codigo = f[4] || '';
+      if (!codigo) return;
+      if (!porProducto[codigo]) porProducto[codigo] = [];
+      porProducto[codigo].push({
+        timestamp: f[0] || '',
+        tipo: f[8] || '',
+        cantidad: parseFloat(f[7]) || 0
+      });
+    });
+
+    stockEstado.stockCalculado = {};
+
+    estado.productos.forEach(function(p) {
+      var movs = porProducto[p.codigo] || [];
+
+      // Ordenar por timestamp
+      movs.sort(function(a, b) { return a.timestamp.localeCompare(b.timestamp); });
+
+      // Encontrar índice del último AJUSTE
+      var baseIdx = -1;
+      var base = 0;
+      for (var i = movs.length - 1; i >= 0; i--) {
+        if (movs[i].tipo === 'AJUSTE') {
+          baseIdx = i;
+          base = movs[i].cantidad;
+          break;
+        }
+      }
+
+      var baseTimestamp = baseIdx >= 0 ? movs[baseIdx].timestamp : '';
+
+      // Sumar movimientos posteriores al último ajuste
+      var stock = base;
+      for (var j = baseIdx + 1; j < movs.length; j++) {
+        if (movs[j].tipo === 'ENTRADA') stock += movs[j].cantidad;
+        else if (movs[j].tipo === 'SALIDA') stock -= movs[j].cantidad;
+      }
+
+      // Restar ventas posteriores al último ajuste (no anuladas)
+      movVentas.forEach(function(f) {
+        if (f[4] !== p.codigo) return;
+        if (f[10] !== 'VENTA') return;
+        if (anuladas[f[0]]) return;
+        if (baseTimestamp && f[0] <= baseTimestamp) return;
+        stock -= parseFloat(f[7]) || 0;
+      });
+
+      stockEstado.stockCalculado[p.codigo] = Math.round(stock * 100) / 100;
+    });
+  }).catch(function() {
+    // Si falla (hoja vacía), stock = 0 para todos
+    estado.productos.forEach(function(p) {
+      if (stockEstado.stockCalculado[p.codigo] === undefined) {
+        stockEstado.stockCalculado[p.codigo] = 0;
+      }
+    });
+  });
+}
+
+// ============================================================
+// STOCK — RENDER LISTA
+// ============================================================
+function renderListaStock(lista) {
+  var el = document.getElementById('stock-productos-lista');
+  var count = document.getElementById('stock-productos-count');
+  if (!lista || lista.length === 0) {
+    el.innerHTML = '<div class="empty-state">Sin resultados</div>';
+    count.textContent = '';
+    return;
+  }
+  count.textContent = lista.length + ' productos';
+  el.innerHTML = lista.map(function(p) {
+    var stock = stockEstado.stockCalculado[p.codigo];
+    var stockStr = stock === undefined ? '—' : stock.toFixed(2);
+    var badgeClass = stock === undefined ? 'zero' : (stock <= 0 ? 'zero' : (stock < 5 ? 'low' : 'ok'));
+    var seleccionado = stockEstado.productoSeleccionado && stockEstado.productoSeleccionado.codigo === p.codigo;
+    return '<div class="prod-item' + (seleccionado ? ' selected' : '') + '" onclick="seleccionarProductoStock(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+        '<div>' +
+          '<div class="prod-name">' + esc(p.nombre) + '</div>' +
+          '<div class="prod-meta">' + esc(p.codigo) + ' · ' + esc(p.unidad) + '</div>' +
+        '</div>' +
+        '<span class="stock-badge ' + badgeClass + '">' + stockStr + ' ' + esc(p.unidad) + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+var stockSearchTimeout = null;
+function filtrarListaStock(q) {
+  clearTimeout(stockSearchTimeout);
+  stockSearchTimeout = setTimeout(function() {
+    if (!q || q.trim() === '') {
+      renderListaStock(estado.productos);
+      return;
+    }
+    var ql = q.toLowerCase().trim();
+    var filtrados = estado.productos.filter(function(p) {
+      return p.nombre.toLowerCase().indexOf(ql) !== -1 ||
+             p.codigo.toLowerCase().indexOf(ql) !== -1;
+    });
+    renderListaStock(filtrados);
+  }, 150);
+}
+
+// ============================================================
+// STOCK — SELECCIONAR PRODUCTO
+// ============================================================
+function seleccionarProductoStock(p) {
+  stockEstado.productoSeleccionado = p;
+  document.getElementById('stock-sel-name').textContent = p.nombre;
+  document.getElementById('stock-sel-meta').textContent = p.codigo + ' · ' + p.unidad;
+  document.getElementById('card-stock-form').style.display = 'block';
+  document.getElementById('stock-cantidad').value = '';
+  document.getElementById('stock-motivo').value = '';
+  var stockActual = stockEstado.stockCalculado[p.codigo];
+  document.getElementById('stock-proyectado').value = stockActual !== undefined ? stockActual.toFixed(2) : '0.00';
+  seleccionarTipo('ENTRADA');
+  document.getElementById('card-stock-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  filtrarListaStock(document.getElementById('stock-search').value);
+}
+
+function limpiarSeleccionStock() {
+  stockEstado.productoSeleccionado = null;
+  document.getElementById('card-stock-form').style.display = 'none';
+  filtrarListaStock(document.getElementById('stock-search').value);
+}
+
+function seleccionarTipo(tipo) {
+  stockEstado.tipoMovimiento = tipo;
+  ['ENTRADA','SALIDA','AJUSTE'].forEach(function(t) {
+    var btn = document.getElementById('tipo-' + t);
+    if (btn) btn.classList.toggle('active', t === tipo);
+  });
+  var labels = { ENTRADA: 'Cantidad recibida', SALIDA: 'Cantidad a retirar', AJUSTE: 'Stock físico real (reemplaza)' };
+  document.getElementById('label-cantidad-stock').textContent = labels[tipo] || 'Cantidad';
+}
+
+// ============================================================
+// STOCK — REGISTRAR MOVIMIENTO
+// ============================================================
+function registrarMovimientoStock() {
+  var p = stockEstado.productoSeleccionado;
+  if (!p) { toast('Selecciona un producto', 'error'); return; }
+  var cantidad = parseFloat(document.getElementById('stock-cantidad').value);
+  if (isNaN(cantidad) || cantidad <= 0) { toast('Ingresa una cantidad válida', 'error'); return; }
+  var motivo = document.getElementById('stock-motivo').value.trim();
+  if (!motivo) { toast('Ingresa un motivo o descripción', 'error'); return; }
+
+  var emailUsuario = estado.usuario || sessionStorage.getItem('user_email') || '';
+  var ahora = new Date();
+  var timestamp = ahora.toISOString();
+  var fecha = ahora.toISOString().slice(0,10);
+  var hora = ahora.toTimeString().slice(0,8);
+  var tipo = stockEstado.tipoMovimiento;
+
+  var btn = document.getElementById('btn-registrar-stock');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+
+  var hoja = estado.config.hojaStock || 'Stock';
+  var fila = [[timestamp, fecha, hora, emailUsuario, p.codigo, p.nombre, p.unidad, cantidad, tipo, motivo]];
+
+  // Asegurar encabezados en hoja Stock
+  sheetsGet(hoja + '!A1:J1').then(function(data) {
+    var fila1 = data.values && data.values[0] ? data.values[0] : [];
+    if (fila1[0] !== 'Timestamp') {
+      return asegurarEncabezadosHoja(hoja,
+        ['Timestamp','Fecha','Hora','Usuario','Código','Nombre','Unidad','Cantidad','Tipo','Motivo']
+      );
+    }
+  }).then(function() {
+    return sheetsAppend(hoja + '!A:J', fila);
+  }).then(function(resp) {
+    if (resp.error) throw new Error(resp.error.message);
+    toast('Movimiento registrado ✓', 'success');
+    // Recalcular stock proyectado
+    return calcularStockProyectado();
+  }).then(function() {
+    // Actualizar UI
+    var stockActual = stockEstado.stockCalculado[p.codigo];
+    document.getElementById('stock-proyectado').value = stockActual !== undefined ? stockActual.toFixed(2) : '0.00';
+    document.getElementById('stock-cantidad').value = '';
+    document.getElementById('stock-motivo').value = '';
+    filtrarListaStock(document.getElementById('stock-search').value);
+  }).catch(function(e) {
+    toast('Error: ' + e.message, 'error');
+  }).finally(function() {
+    btn.disabled = false;
+    btn.textContent = 'Registrar movimiento';
+  });
+}
+
+// ============================================================
+// HELPER — ASEGURAR ENCABEZADOS EN CUALQUIER HOJA
+// ============================================================
+function asegurarEncabezadosHoja(hoja, encabezados) {
+  return fetch('https://sheets.googleapis.com/v4/spreadsheets/' +
+    encodeURIComponent(estado.config.sheetId) + '?fields=sheets.properties',
+    { headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso } })
+  .then(function(r) { return r.json(); })
+  .then(function(meta) {
+    var sheetId = 0;
+    if (meta.sheets) {
+      meta.sheets.forEach(function(s) {
+        if (s.properties.title === hoja) sheetId = s.properties.sheetId;
+      });
+    }
+    return fetch('https://sheets.googleapis.com/v4/spreadsheets/' +
+      encodeURIComponent(estado.config.sheetId) + ':batchUpdate', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ insertDimension: {
+        range: { sheetId: sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 },
+        inheritFromBefore: false
+      }}]})
+    });
+  })
+  .then(function() {
+    var rango = hoja + '!A1:' + String.fromCharCode(64 + encabezados.length) + '1';
+    return fetch('https://sheets.googleapis.com/v4/spreadsheets/' +
+      encodeURIComponent(estado.config.sheetId) +
+      '/values/' + encodeURIComponent(rango) + '?valueInputOption=USER_ENTERED', {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [encabezados] })
+    });
+  });
+}
 
 </script>
 </body>
