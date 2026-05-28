@@ -474,7 +474,84 @@ function mostrarApp() {
   document.getElementById('user-email-badge').textContent = estado.usuario;
   if (estado.config.sheetId) {
     cargarProductos();
+    asegurarEncabezadosVentas();
   }
+}
+
+function asegurarEncabezadosVentas() {
+  var hoja = estado.config.hojaVentas;
+  sheetsGet(hoja + '!A1:M1')
+  .then(function(data) {
+    var fila1 = data.values && data.values[0] ? data.values[0] : [];
+    if (fila1[0] === 'Timestamp') return; // ya tiene encabezados
+    // Insertar fila al inicio
+    var urlBatch = 'https://sheets.googleapis.com/v4/spreadsheets/' +
+      encodeURIComponent(estado.config.sheetId) + ':batchUpdate';
+    fetch(urlBatch, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + estado.tokenAcceso,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        requests: [{
+          insertDimension: {
+            range: { sheetId: null, dimension: 'ROWS', startIndex: 0, endIndex: 1 },
+            inheritFromBefore: false
+          }
+        }]
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+      // Obtener sheetId real de la hoja Ventas
+      return fetch('https://sheets.googleapis.com/v4/spreadsheets/' +
+        encodeURIComponent(estado.config.sheetId) + '?fields=sheets.properties',
+        { headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso } });
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(meta) {
+      var sheetId = 0;
+      if (meta.sheets) {
+        meta.sheets.forEach(function(s) {
+          if (s.properties.title === hoja) sheetId = s.properties.sheetId;
+        });
+      }
+      // Insertar fila con sheetId correcto
+      return fetch('https://sheets.googleapis.com/v4/spreadsheets/' +
+        encodeURIComponent(estado.config.sheetId) + ':batchUpdate', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + estado.tokenAcceso,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requests: [{
+            insertDimension: {
+              range: { sheetId: sheetId, dimension: 'ROWS', startIndex: 0, endIndex: 1 },
+              inheritFromBefore: false
+            }
+          }]
+        })
+      });
+    })
+    .then(function() {
+      return fetch('https://sheets.googleapis.com/v4/spreadsheets/' +
+        encodeURIComponent(estado.config.sheetId) +
+        '/values/' + encodeURIComponent(hoja + '!A1:M1') +
+        '?valueInputOption=USER_ENTERED', {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Bearer ' + estado.tokenAcceso,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          values: [['Timestamp','Fecha','Hora','Usuario','Código','Nombre','Unidad','Cantidad','Importe','Ref.Calculado','Estado','Ref.Anulacion','Motivo']]
+        })
+      });
+    });
+  })
+  .catch(function() {});
 }
 
 function mostrarError(msg) {
