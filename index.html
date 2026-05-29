@@ -374,10 +374,11 @@
       <div class="card">
         <div class="card-title">Instrucciones</div>
         <p style="font-size:12px;color:var(--text2);line-height:1.7;">
-          1. Comparte tu Google Sheet con la cuenta de servicio o asegúrate que esté compartido con tu Gmail.<br>
+          1. Solo el <b style="color:var(--text);">administrador</b> necesita configurar el Sheet ID una vez — los demás usuarios lo obtienen automáticamente.<br>
           2. La hoja <b style="color:var(--text);">Productos</b> debe tener columnas: <span style="font-family:var(--mono);color:var(--accent);">Código | Nombre | Unidad | Precio</span><br>
-          3. La hoja <b style="color:var(--text);">Ventas</b> se crea automáticamente si no existe.<br>
-          4. Ingresa el ID del spreadsheet y guarda la configuración.
+          3. Las hojas <b style="color:var(--text);">Ventas</b> y <b style="color:var(--text);">Stock</b> se crean automáticamente.<br>
+          4. La configuración se guarda en el Spreadsheet y aplica a todos los usuarios.<br>
+          5. Para nuevos usuarios: solo ingresa el Sheet ID y haz clic en Guardar.
         </p>
       </div>
     </div>
@@ -473,7 +474,8 @@ var estado = {
     sheetId: '',
     hojaProductos: 'Productos',
     hojaVentas: 'Ventas',
-    hojaStock: 'Stock'
+    hojaStock: 'Stock',
+    hojaConfig: 'Config'
   }
 };
 
@@ -484,6 +486,14 @@ window.onload = function() {
   cargarConfigLocal();
   var tokenGuardado = sessionStorage.getItem('access_token');
   var emailGuardado = sessionStorage.getItem('user_email');
+  // Migrar localStorage viejo si existe
+  var cfgViejo = localStorage.getItem('ventas_config');
+  if (cfgViejo && !localStorage.getItem('dcafiro_sheet_id')) {
+    try {
+      var cfgObj = JSON.parse(cfgViejo);
+      if (cfgObj.sheetId) localStorage.setItem('dcafiro_sheet_id', cfgObj.sheetId);
+    } catch(e) {}
+  }
   if (tokenGuardado && emailGuardado) {
     estado.tokenAcceso = tokenGuardado;
     estado.usuario = emailGuardado;
@@ -542,8 +552,10 @@ function mostrarApp() {
   document.getElementById('app').style.display = 'flex';
   document.getElementById('user-email-badge').textContent = estado.usuario;
   if (estado.config.sheetId) {
-    cargarProductos();
-    asegurarEncabezadosVentas();
+    cargarConfigRemota().then(function() {
+      cargarProductos();
+      asegurarEncabezadosVentas();
+    });
   }
 }
 
@@ -633,29 +645,95 @@ function mostrarError(msg) {
 // CONFIG
 // ============================================================
 function cargarConfigLocal() {
-  var cfg = localStorage.getItem('ventas_config');
-  if (cfg) {
-    try {
-      estado.config = JSON.parse(cfg);
-      document.getElementById('cfg-sheet-id').value = estado.config.sheetId || '';
-      document.getElementById('cfg-hoja-productos').value = estado.config.hojaProductos || 'Productos';
-      document.getElementById('cfg-hoja-ventas').value = estado.config.hojaVentas || 'Ventas';
-      if (document.getElementById('cfg-hoja-stock')) {
-        document.getElementById('cfg-hoja-stock').value = estado.config.hojaStock || 'Stock';
-      }
-    } catch(e) {}
+  // Solo cargamos sheetId desde localStorage (lo mínimo para conectar)
+  var sheetId = localStorage.getItem('dcafiro_sheet_id');
+  if (sheetId) {
+    estado.config.sheetId = sheetId;
+    document.getElementById('cfg-sheet-id').value = sheetId;
   }
+}
+
+function cargarConfigRemota() {
+  // Lee la configuración desde la hoja Config del Spreadsheet
+  if (!estado.config.sheetId) return Promise.resolve();
+  return sheetsGet('Config!A:B')
+  .then(function(data) {
+    if (!data.values || data.values.length < 2) return;
+    var mapa = {};
+    data.values.forEach(function(row) {
+      if (row[0] && row[1]) mapa[row[0].trim().toLowerCase()] = row[1].trim();
+    });
+    if (mapa['hoja_productos']) {
+      estado.config.hojaProductos = mapa['hoja_productos'];
+      document.getElementById('cfg-hoja-productos').value = mapa['hoja_productos'];
+    }
+    if (mapa['hoja_ventas']) {
+      estado.config.hojaVentas = mapa['hoja_ventas'];
+      document.getElementById('cfg-hoja-ventas').value = mapa['hoja_ventas'];
+    }
+    if (mapa['hoja_stock']) {
+      estado.config.hojaStock = mapa['hoja_stock'];
+      if (document.getElementById('cfg-hoja-stock'))
+        document.getElementById('cfg-hoja-stock').value = mapa['hoja_stock'];
+    }
+    console.log('Config remota cargada:', mapa);
+  })
+  .catch(function() {
+    // Si no existe la hoja Config, usa valores por defecto — no es error fatal
+  });
 }
 
 function guardarConfig() {
   estado.config.sheetId = document.getElementById('cfg-sheet-id').value.trim();
   estado.config.hojaProductos = document.getElementById('cfg-hoja-productos').value.trim() || 'Productos';
   estado.config.hojaVentas = document.getElementById('cfg-hoja-ventas').value.trim() || 'Ventas';
-  estado.config.hojaStock = document.getElementById('cfg-hoja-stock').value.trim() || 'Stock';
-  localStorage.setItem('ventas_config', JSON.stringify(estado.config));
-  document.getElementById('cfg-status').textContent = '✓ Configuración guardada';
-  toast('Configuración guardada', 'success');
-  cargarProductos();
+  estado.config.hojaStock = (document.getElementById('cfg-hoja-stock') || {}).value || 'Stock';
+  estado.config.hojaStock = estado.config.hojaStock.trim() || 'Stock';
+
+  // Guardar solo sheetId en localStorage (compartir el resto via Spreadsheet)
+  localStorage.setItem('dcafiro_sheet_id', estado.config.sheetId);
+  // Limpiar localStorage viejo si existe
+  localStorage.removeItem('ventas_config');
+
+  document.getElementById('cfg-status').textContent = 'Guardando configuración...';
+
+  // Escribir config en hoja Config del Spreadsheet
+  guardarConfigRemota().then(function() {
+    document.getElementById('cfg-status').textContent = '✓ Configuración guardada';
+    toast('Configuración guardada', 'success');
+    cargarProductos();
+  }).catch(function() {
+    document.getElementById('cfg-status').textContent = '✓ Config guardada (solo local)';
+    toast('Configuración guardada localmente', 'success');
+    cargarProductos();
+  });
+}
+
+function guardarConfigRemota() {
+  var hoja = 'Config';
+  var valores = [
+    ['clave', 'valor'],
+    ['hoja_productos', estado.config.hojaProductos],
+    ['hoja_ventas', estado.config.hojaVentas],
+    ['hoja_stock', estado.config.hojaStock]
+  ];
+  // Sobrescribir toda la hoja Config
+  var url = 'https://sheets.googleapis.com/v4/spreadsheets/' +
+    encodeURIComponent(estado.config.sheetId) +
+    '/values/' + encodeURIComponent(hoja + '!A1:B10') +
+    '?valueInputOption=USER_ENTERED';
+  return fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'Bearer ' + estado.tokenAcceso,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ values: valores })
+  }).then(function(r) { return r.json(); })
+  .then(function(resp) {
+    if (resp.error) throw new Error(resp.error.message);
+    return resp;
+  });
 }
 
 function recargarProductos() {
