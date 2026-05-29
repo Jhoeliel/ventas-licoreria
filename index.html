@@ -467,6 +467,8 @@ var SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 var estado = {
   usuario: null,
   tokenAcceso: null,
+  tokenExpira: null,   // timestamp ms cuando expira
+  tokenCliente: null,  // referencia al cliente OAuth para renovar
   productos: [],
   productoSeleccionado: null,
   ventaParaAnular: null,
@@ -486,6 +488,7 @@ window.onload = function() {
   cargarConfigLocal();
   var tokenGuardado = sessionStorage.getItem('access_token');
   var emailGuardado = sessionStorage.getItem('user_email');
+  var tokenExpira = parseInt(sessionStorage.getItem('token_expira') || '0');
   // Migrar localStorage viejo si existe
   var cfgViejo = localStorage.getItem('ventas_config');
   if (cfgViejo && !localStorage.getItem('dcafiro_sheet_id')) {
@@ -497,6 +500,20 @@ window.onload = function() {
   if (tokenGuardado && emailGuardado) {
     estado.tokenAcceso = tokenGuardado;
     estado.usuario = emailGuardado;
+    estado.tokenExpira = tokenExpira;
+    // Si el token ya expiró, renovar al entrar
+    var ahora = Date.now();
+    if (tokenExpira && tokenExpira - ahora < 5 * 60 * 1000) {
+      // Expira en menos de 5 min o ya expiró — inicializar cliente para renovar
+      // Mostrar app igual, la renovación ocurrirá en background
+    } else if (tokenExpira) {
+      // Programar renovación para cuando falten 5 minutos
+      var renovarEn = tokenExpira - ahora - (5 * 60 * 1000);
+      if (renovarEn > 0) {
+        clearTimeout(estado._renovarTimer);
+        estado._renovarTimer = setTimeout(renovarTokenSilencioso, renovarEn);
+      }
+    }
     mostrarApp();
   }
   var hoy = new Date().toISOString().slice(0,10);
@@ -512,7 +529,7 @@ function iniciarLogin() {
     mostrarError('Error: No se pudo cargar Google Identity. Verifica tu conexión.');
     return;
   }
-  var client = google.accounts.oauth2.initTokenClient({
+  estado.tokenCliente = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: function(resp) {
@@ -520,23 +537,62 @@ function iniciarLogin() {
         mostrarError('Error de autenticación: ' + resp.error);
         return;
       }
-      estado.tokenAcceso = resp.access_token;
-      sessionStorage.setItem('access_token', resp.access_token);
-      // Obtener info del usuario
-      fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { 'Authorization': 'Bearer ' + resp.access_token }
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(info) {
-        estado.usuario = info.email || '';
-        if (estado.usuario) {
-          sessionStorage.setItem('user_email', estado.usuario);
-        }
-        mostrarApp();
-      });
+      guardarToken(resp);
+      if (!estado.usuario) {
+        // Primera vez: obtener email
+        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { 'Authorization': 'Bearer ' + resp.access_token }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(info) {
+          estado.usuario = info.email || '';
+          if (estado.usuario) {
+            sessionStorage.setItem('user_email', estado.usuario);
+          }
+          mostrarApp();
+        });
+      }
+      // Si es renovación silenciosa, solo actualizar token (usuario ya está en app)
     }
   });
-  client.requestAccessToken();
+  estado.tokenCliente.requestAccessToken();
+}
+
+function guardarToken(resp) {
+  estado.tokenAcceso = resp.access_token;
+  // Los tokens de Google duran 3600s — renovar a los 50 minutos (3000s)
+  var expiraEn = (parseInt(resp.expires_in) || 3600) * 1000;
+  estado.tokenExpira = Date.now() + expiraEn;
+  sessionStorage.setItem('access_token', resp.access_token);
+  sessionStorage.setItem('token_expira', estado.tokenExpira.toString());
+  // Programar renovación automática 5 minutos antes de expirar
+  var renovarEn = expiraEn - (5 * 60 * 1000);
+  if (renovarEn < 10000) renovarEn = 10000; // mínimo 10s
+  clearTimeout(estado._renovarTimer);
+  estado._renovarTimer = setTimeout(renovarTokenSilencioso, renovarEn);
+}
+
+function renovarTokenSilencioso() {
+  if (!estado.tokenCliente) {
+    // Reinicializar cliente si no existe (ej. recarga de página)
+    if (typeof google === 'undefined') return;
+    estado.tokenCliente = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: function(resp) {
+        if (!resp.error) {
+          guardarToken(resp);
+        }
+      }
+    });
+  }
+  // Solicitar token nuevo sin mostrar popup (usa prompt: none)
+  try {
+    estado.tokenCliente.requestAccessToken({ prompt: '' });
+  } catch(e) {
+    // Si falla la renovación silenciosa, intentar de nuevo en 1 minuto
+    estado._renovarTimer = setTimeout(renovarTokenSilencioso, 60000);
+  }
 }
 
 function cerrarSesion() {
@@ -751,7 +807,19 @@ function sheetsGet(rango) {
     '?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING';
   return fetch(url, {
     headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso }
-  }).then(function(r) { return r.json(); });
+  }).then(function(r) {
+    if (r.status === 401) {
+      // Token expirado — renovar y reintentar una vez
+      return new Promise(function(resolve, reject) {
+        renovarYReintentar(function() {
+          fetch(url, { headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso } })
+          .then(function(r2) { resolve(r2.json()); })
+          .catch(reject);
+        }, reject);
+      });
+    }
+    return r.json();
+  });
 }
 
 function sheetsAppend(rango, valores) {
@@ -759,14 +827,57 @@ function sheetsAppend(rango, valores) {
     encodeURIComponent(estado.config.sheetId) +
     '/values/' + encodeURIComponent(rango) +
     ':append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS';
+  var body = JSON.stringify({ values: valores });
   return fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + estado.tokenAcceso,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ values: valores })
-  }).then(function(r) { return r.json(); });
+    headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso, 'Content-Type': 'application/json' },
+    body: body
+  }).then(function(r) {
+    if (r.status === 401) {
+      return new Promise(function(resolve, reject) {
+        renovarYReintentar(function() {
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso, 'Content-Type': 'application/json' },
+            body: body
+          }).then(function(r2) { resolve(r2.json()); }).catch(reject);
+        }, reject);
+      });
+    }
+    return r.json();
+  });
+}
+
+function renovarYReintentar(onSuccess, onError) {
+  // Intenta renovar el token silenciosamente y luego ejecuta onSuccess
+  if (!estado.tokenCliente) {
+    if (typeof google === 'undefined') { onError(new Error('Sesión expirada')); return; }
+    estado.tokenCliente = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: function(resp) {
+        if (resp.error) { onError(new Error('Sesión expirada')); return; }
+        guardarToken(resp);
+        onSuccess();
+      }
+    });
+  } else {
+    var oldCallback = estado.tokenCliente;
+    estado.tokenCliente = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: function(resp) {
+        if (resp.error) { onError(new Error('Sesión expirada')); return; }
+        guardarToken(resp);
+        onSuccess();
+      }
+    });
+  }
+  try {
+    estado.tokenCliente.requestAccessToken({ prompt: '' });
+  } catch(e) {
+    onError(new Error('No se pudo renovar la sesión'));
+  }
 }
 
 // ============================================================
