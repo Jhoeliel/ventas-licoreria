@@ -285,7 +285,7 @@
   <nav>
     <button class="nav-btn active" onclick="mostrarPanel('panel-registro', this)">+ Nueva Venta</button>
     <button class="nav-btn" onclick="mostrarPanel('panel-historial', this); cargarHistorialHoy()">Mis Ventas Hoy</button>
-    <button class="nav-btn" onclick="mostrarPanel('panel-reporte', this); cargarReporte()">Reporte del Día</button>
+    <button class="nav-btn" onclick="mostrarPanel('panel-reporte', this); cargarReporte()">Reporte por Fechas</button>
     <button class="nav-btn" onclick="mostrarPanel('panel-stock', this); cargarPanelStock()">📦 Stock</button>
     <button class="nav-btn" onclick="mostrarPanel('panel-config', this)">⚙ Config</button>
   </nav>
@@ -310,7 +310,7 @@
           </div>
           <div class="input-group">
             <label>Importe S/ (manual)</label>
-            <input type="number" id="input-importe" min="0" step="0.01" placeholder="0.00">
+            <input type="number" id="input-importe" min="0" step="0.01" placeholder="0.00" oninput="this.dataset.modificado='1'">
             <div class="ref-price" id="ref-price"></div>
           </div>
         </div>
@@ -328,8 +328,25 @@
 
     <!-- PANEL HISTORIAL -->
     <div class="panel" id="panel-historial">
+      <div class="card" id="historial-resumen" style="display:none;">
+        <div class="card-title">Resumen de hoy — <span id="fecha-hoy-label"></span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:4px;">
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Transacciones</div>
+            <div id="res-transacciones" style="font-size:22px;font-weight:600;font-family:var(--mono);color:var(--text);">0</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Total Vendido</div>
+            <div id="res-total" style="font-size:22px;font-weight:600;font-family:var(--mono);color:var(--accent);">S/ 0</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Anuladas</div>
+            <div id="res-anuladas" style="font-size:22px;font-weight:600;font-family:var(--mono);color:var(--danger);">0</div>
+          </div>
+        </div>
+      </div>
       <div class="card">
-        <div class="card-title">Mis registros de hoy — <span id="fecha-hoy-label"></span></div>
+        <div class="card-title">Mis registros de hoy</div>
         <div id="historial-list"><div class="empty-state">Cargando...</div></div>
       </div>
     </div>
@@ -337,11 +354,19 @@
     <!-- PANEL REPORTE -->
     <div class="panel" id="panel-reporte">
       <div class="card">
-        <div class="reporte-header">
-          <div class="card-title" style="margin:0;">Reporte del día</div>
-          <input type="date" class="fecha-selector" id="reporte-fecha" onchange="cargarReporte()">
+        <div class="card-title">Reporte por Fechas</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <label style="font-size:11px;color:var(--text2);">Desde</label>
+            <input type="date" class="fecha-selector" id="reporte-fecha-desde" onchange="cargarReporte()">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <label style="font-size:11px;color:var(--text2);">Hasta</label>
+            <input type="date" class="fecha-selector" id="reporte-fecha-hasta" onchange="cargarReporte()">
+          </div>
+          <button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);" onclick="cargarReporte()">↺ Actualizar</button>
         </div>
-        <div id="reporte-content"><div class="empty-state">Cargando...</div></div>
+        <div id="reporte-content"><div class="empty-state">Selecciona un rango de fechas</div></div>
       </div>
     </div>
 
@@ -517,7 +542,8 @@ window.onload = function() {
     mostrarApp();
   }
   var hoy = new Date().toISOString().slice(0,10);
-  document.getElementById('reporte-fecha').value = hoy;
+  document.getElementById('reporte-fecha-desde').value = hoy;
+  document.getElementById('reporte-fecha-hasta').value = hoy;
   document.getElementById('fecha-hoy-label').textContent = formatFecha(hoy);
 };
 
@@ -887,7 +913,7 @@ function cargarProductos() {
   if (!estado.config.sheetId) return;
   document.getElementById('cfg-status').textContent = 'Cargando productos...';
   var hoja = estado.config.hojaProductos;
-  sheetsGet(hoja + '!A:D')
+  sheetsGet(hoja + '!A:E')
   .then(function(data) {
     if (!data.values || data.values.length < 2) {
       document.getElementById('cfg-status').textContent = 'Sin productos encontrados en la hoja.';
@@ -903,7 +929,8 @@ function cargarProductos() {
         codigo: f[0] || '',
         nombre: f[1] || '',
         unidad: f[2] || '',
-        precio: parseFloat(f[3]) || 0
+        precio: parseFloat(f[3]) || 0,
+        costo: parseFloat(f[4]) || 0
       });
     }
     document.getElementById('cfg-status').textContent = '✓ ' + estado.productos.length + ' productos cargados';
@@ -958,10 +985,12 @@ function filtrarLista(q) {
 function seleccionarProducto(p) {
   estado.productoSeleccionado = p;
   document.getElementById('sel-name').textContent = p.nombre;
-  document.getElementById('sel-meta').textContent = p.codigo + ' · ' + p.unidad + ' · S/ ' + p.precio.toFixed(2);
+  document.getElementById('sel-meta').textContent = p.codigo + ' · ' + p.unidad + ' · Venta: S/ ' + p.precio.toFixed(2) + (p.costo ? '  |  Costo: S/ ' + p.costo.toFixed(2) : '');
   document.getElementById('card-inputs').style.display = 'block';
   document.getElementById('input-cantidad').value = '';
-  document.getElementById('input-importe').value = '';
+  var imp = document.getElementById('input-importe');
+  imp.value = '';
+  imp.dataset.modificado = '';
   document.getElementById('ref-price').textContent = '';
   document.getElementById('input-cantidad').focus();
   // Scroll al card de inputs
@@ -985,7 +1014,12 @@ function actualizarRef() {
     return;
   }
   var ref = (qty * p.precio).toFixed(2);
-  document.getElementById('ref-price').textContent = '↗ Ref: S/ ' + ref;
+  document.getElementById('ref-price').textContent = 'Precio unitario: S/ ' + p.precio.toFixed(2);
+  // Auto-rellenar importe si está vacío o si el usuario no lo ha modificado manualmente
+  var inputImporte = document.getElementById('input-importe');
+  if (!inputImporte.dataset.modificado) {
+    inputImporte.value = ref;
+  }
 }
 
 // ============================================================
@@ -1017,7 +1051,7 @@ function registrarVenta() {
     timestamp, fecha, hora,
     emailUsuario,
     p.codigo, p.nombre, p.unidad,
-    cantidad, importe, refCalc,
+    numStr(cantidad), numStr(importe), numStr(refCalc),
     'VENTA', '', ''
   ]];
 
@@ -1139,8 +1173,19 @@ function confirmarAnulacion() {
 // REPORTE DEL DÍA
 // ============================================================
 function cargarReporte() {
-  var fecha = document.getElementById('reporte-fecha').value;
+  var desde = document.getElementById('reporte-fecha-desde').value;
+  var hasta = document.getElementById('reporte-fecha-hasta').value;
   var el = document.getElementById('reporte-content');
+
+  if (!desde || !hasta) {
+    el.innerHTML = '<div class="empty-state">Selecciona el rango de fechas</div>';
+    return;
+  }
+  if (desde > hasta) {
+    el.innerHTML = '<div class="empty-state">La fecha "Desde" no puede ser mayor que "Hasta"</div>';
+    return;
+  }
+
   el.innerHTML = '<div class="loading-row"><div class="spinner"></div> Cargando reporte...</div>';
   var hoja = estado.config.hojaVentas;
   sheetsGet(hoja + '!A:M')
@@ -1150,59 +1195,92 @@ function cargarReporte() {
       return;
     }
     var filas = data.values.slice(1);
-    // Solo ventas activas de la fecha (excluir anulaciones)
-    // Una venta se considera anulada si existe una fila ANULACION con ref a su timestamp
+
+    // Identificar ventas anuladas
     var anuladas = {};
     filas.forEach(function(f) {
-      if (f[10] === 'ANULACION' && f[11]) {
-        anuladas[f[11]] = true;
-      }
-    });
-    var ventasDia = filas.filter(function(f) {
-      return f[1] === fecha && f[10] === 'VENTA' && !anuladas[f[0]];
+      if (f[10] === 'ANULACION' && f[11]) anuladas[f[11]] = true;
     });
 
-    if (ventasDia.length === 0) {
-      el.innerHTML = '<div class="empty-state">Sin ventas para esta fecha</div>';
+    // Filtrar por rango de fechas, solo ventas activas
+    var ventasPeriodo = filas.filter(function(f) {
+      return f[1] >= desde && f[1] <= hasta && f[10] === 'VENTA' && !anuladas[f[0]];
+    });
+
+    if (ventasPeriodo.length === 0) {
+      el.innerHTML = '<div class="empty-state">Sin ventas para el período seleccionado</div>';
       return;
     }
 
-    // Consolidar por producto
+    // Consolidar por producto — incluir costo desde el catálogo
     var consolidado = {};
-    ventasDia.forEach(function(f) {
-      var key = f[4] + '|' + f[5]; // codigo|nombre
+    ventasPeriodo.forEach(function(f) {
+      var key = f[4] + '|' + f[5];
       if (!consolidado[key]) {
-        consolidado[key] = { codigo: f[4], nombre: f[5], unidad: f[6], cantidad: 0, importe: 0 };
+        // Buscar costo en el catálogo
+        var prod = estado.productos.find(function(p) { return p.codigo === f[4]; });
+        var costo = prod ? prod.costo : 0;
+        consolidado[key] = { codigo: f[4], nombre: f[5], unidad: f[6], cantidad: 0, importe: 0, costo_unit: costo };
       }
       consolidado[key].cantidad += parseFloat(f[7]) || 0;
       consolidado[key].importe += (f[8] !== undefined && f[8] !== '' ? parseFloat(f[8]) : 0);
     });
 
-    var items = Object.values(consolidado).sort(function(a,b) {
-      return a.nombre.localeCompare(b.nombre);
+    var items = Object.values(consolidado).sort(function(a,b) { return a.nombre.localeCompare(b.nombre); });
+
+    var totalImporte = 0, totalCosto = 0, totalMargen = 0;
+    items.forEach(function(i) {
+      i.costo_total = i.cantidad * i.costo_unit;
+      i.margen = i.importe - i.costo_total;
+      totalImporte += i.importe;
+      totalCosto += i.costo_total;
+      totalMargen += i.margen;
     });
 
-    var totalCantidad = 0;
-    var totalImporte = 0;
-    items.forEach(function(i) { totalCantidad += i.cantidad; totalImporte += i.importe; });
-
+    // Encabezado del reporte
+    var rangoLabel = desde === hasta ? desde : desde + ' al ' + hasta;
     var html = '<p style="font-size:12px;color:var(--text2);margin-bottom:12px;">' +
-      ventasDia.length + ' transacciones · ' + items.length + ' productos distintos</p>';
+      ventasPeriodo.length + ' transacciones · ' + items.length + ' productos · Período: ' + rangoLabel + '</p>';
+
+    // Tarjetas de totales
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">';
+    html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;">' +
+      '<div style="font-size:10px;color:var(--text2);margin-bottom:4px;">IMPORTE TOTAL</div>' +
+      '<div style="font-family:var(--mono);font-size:16px;color:var(--accent);">S/ ' + totalImporte.toFixed(2) + '</div></div>';
+    html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;">' +
+      '<div style="font-size:10px;color:var(--text2);margin-bottom:4px;">COSTO TOTAL</div>' +
+      '<div style="font-family:var(--mono);font-size:16px;color:var(--warn);">S/ ' + totalCosto.toFixed(2) + '</div></div>';
+    html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;">' +
+      '<div style="font-size:10px;color:var(--text2);margin-bottom:4px;">MARGEN TOTAL</div>' +
+      '<div style="font-family:var(--mono);font-size:16px;color:#22c55e;">S/ ' + totalMargen.toFixed(2) + '</div></div>';
+    html += '</div>';
+
+    // Tabla detalle
     html += '<div style="overflow-x:auto;">';
     html += '<table><thead><tr>' +
-      '<th>Producto</th><th>Und</th><th class="td-num">Cant.</th><th class="td-num">Importe S/</th>' +
+      '<th>Producto</th><th>Und</th><th class="td-num">Cant.</th>' +
+      '<th class="td-num">Importe S/</th><th class="td-num">Costo S/</th><th class="td-num">Margen S/</th>' +
       '</tr></thead><tbody>';
+
     items.forEach(function(i) {
+      var margenPct = i.importe > 0 ? ((i.margen / i.importe) * 100).toFixed(1) : '0.0';
       html += '<tr>' +
         '<td>' + esc(i.nombre) + '<br><span style="font-size:10px;color:var(--text3);font-family:var(--mono);">' + esc(i.codigo) + '</span></td>' +
         '<td class="td-mono">' + esc(i.unidad) + '</td>' +
         '<td class="td-num">' + i.cantidad.toFixed(2) + '</td>' +
         '<td class="td-num" style="color:var(--accent2);">' + i.importe.toFixed(2) + '</td>' +
+        '<td class="td-num" style="color:var(--warn);">' + i.costo_total.toFixed(2) + '</td>' +
+        '<td class="td-num" style="color:#22c55e;">' + i.margen.toFixed(2) +
+          '<br><span style="font-size:10px;color:var(--text3);">' + margenPct + '%</span></td>' +
         '</tr>';
     });
-    html += '<tr class="totals-row"><td colspan="2"><b>TOTAL</b></td>' +
-      '<td class="td-num"><b>' + totalCantidad.toFixed(2) + '</b></td>' +
-      '<td class="td-num"><b>' + totalImporte.toFixed(2) + '</b></td></tr>';
+
+    html += '<tr class="totals-row">' +
+      '<td colspan="3"><b>TOTAL</b></td>' +
+      '<td class="td-num"><b>' + totalImporte.toFixed(2) + '</b></td>' +
+      '<td class="td-num" style="color:var(--warn);"><b>' + totalCosto.toFixed(2) + '</b></td>' +
+      '<td class="td-num" style="color:#22c55e;"><b>' + totalMargen.toFixed(2) + '</b></td>' +
+      '</tr>';
     html += '</tbody></table></div>';
     el.innerHTML = html;
   })
@@ -1214,6 +1292,12 @@ function cargarReporte() {
 // ============================================================
 // HELPERS
 // ============================================================
+// Convierte un número a string con punto decimal siempre (evita comas regionales)
+function numStr(val) {
+  var n = parseFloat(val);
+  if (isNaN(n)) return '0';
+  return n.toString().replace(',', '.');
+}
 function mostrarPanel(id, btn) {
   document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
   document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -1451,7 +1535,7 @@ function registrarMovimientoStock() {
   btn.textContent = 'Guardando...';
 
   var hoja = estado.config.hojaStock || 'Stock';
-  var fila = [[timestamp, fecha, hora, emailUsuario, p.codigo, p.nombre, p.unidad, cantidad, tipo, motivo]];
+  var fila = [[timestamp, fecha, hora, emailUsuario, p.codigo, p.nombre, p.unidad, numStr(cantidad), tipo, motivo]];
 
   // Asegurar encabezados en hoja Stock
   sheetsGet(hoja + '!A1:J1').then(function(data) {
