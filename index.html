@@ -1495,16 +1495,16 @@ function renderListaStock(lista) {
   var count = document.getElementById('stock-productos-count');
   if (!lista || lista.length === 0) {
     el.innerHTML = '<div class="empty-state">Sin resultados</div>';
-    count.textContent = '';
+    count.innerHTML = '';
     return;
   }
 
-  // Filtrar solo unidades de inventario para la lista principal
+  // Solo unidades de inventario
   var listaInventario = lista.filter(function(p) {
     return p.tipo === 'UNIDAD' || (p.tipo === 'PAQUETE' && !p.vinculo);
   });
 
-  // Calcular totales de valorización y proyección
+  // Totales
   var totalValor = 0, totalProyeccion = 0;
   listaInventario.forEach(function(p) {
     var stock = stockEstado.stockCalculado[p.codigo] || 0;
@@ -1514,49 +1514,70 @@ function renderListaStock(lista) {
     }
   });
 
-  // Header con totales
-  var header = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">' +
+  count.innerHTML = listaInventario.length + ' productos inventariables' +
+    (lista.length !== listaInventario.length
+      ? ' <span style="color:var(--text3);font-size:10px;">(' + (lista.length - listaInventario.length) + ' paquetes vinculados excluidos)</span>'
+      : '');
+
+  var html = '';
+
+  // Tarjetas de totales
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">' +
     '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;">' +
       '<div style="font-size:10px;color:var(--text2);margin-bottom:2px;">VALOR EN INVENTARIO</div>' +
-      '<div style="font-family:var(--mono);font-size:14px;color:var(--warn);">S/ ' + totalValor.toFixed(2) + '</div>' +
+      '<div style="font-family:var(--mono);font-size:15px;color:var(--warn);">S/ ' + totalValor.toFixed(2) + '</div>' +
     '</div>' +
     '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;">' +
       '<div style="font-size:10px;color:var(--text2);margin-bottom:2px;">PROYECCIÓN DE VENTA</div>' +
-      '<div style="font-family:var(--mono);font-size:14px;color:#22c55e;">S/ ' + totalProyeccion.toFixed(2) + '</div>' +
+      '<div style="font-family:var(--mono);font-size:15px;color:#22c55e;">S/ ' + totalProyeccion.toFixed(2) + '</div>' +
     '</div>' +
   '</div>';
 
-  count.innerHTML = listaInventario.length + ' productos inventariables' +
-    (lista.length !== listaInventario.length ? ' <span style="color:var(--text3);font-size:10px;">(' + (lista.length - listaInventario.length) + ' paquetes vinculados excluidos)</span>' : '');
+  // Tabla
+  html += '<div style="overflow-x:auto;">';
+  html += '<table><thead><tr>' +
+    '<th>Producto</th>' +
+    '<th class="td-num">Stock</th>' +
+    '<th class="td-num">Valor Inv. S/</th>' +
+    '<th class="td-num">Proy. Venta S/</th>' +
+  '</tr></thead><tbody>';
 
-  el.innerHTML = header + listaInventario.map(function(p) {
+  listaInventario.forEach(function(p) {
     var stock = stockEstado.stockCalculado[p.codigo];
     var stockNum = stock !== undefined ? stock : 0;
     var stockStr = stock === undefined ? '—' : stock.toFixed(2);
     var badgeClass = stock === undefined ? 'zero' : (stock <= 0 ? 'zero' : (stock < 5 ? 'low' : 'ok'));
-    var seleccionado = stockEstado.productoSeleccionado && stockEstado.productoSeleccionado.codigo === p.codigo;
     var valoriz = (stockNum * p.costo).toFixed(2);
     var proyecc = (stockNum * p.precio).toFixed(2);
     var esPaqueteIndep = p.tipo === 'PAQUETE' && !p.vinculo;
-    return '<div class="prod-item' + (seleccionado ? ' selected' : '') + '" onclick="seleccionarProductoStock(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')">' +
-      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">' +
-        '<div style="flex:1;min-width:0;">' +
-          '<div class="prod-name">' + esc(p.nombre) +
-            (esPaqueteIndep ? '<span style="font-size:10px;color:var(--text3);margin-left:6px;">[paquete indep.]</span>' : '') +
-          '</div>' +
-          '<div class="prod-meta">' + esc(p.codigo) + ' · ' + esc(p.unidad) +
-            (p.vinculo ? ' · vinculado a ' + esc(p.vinculo) : '') + '</div>' +
-          '<div style="display:flex;gap:8px;margin-top:4px;">' +
-            '<span style="font-size:10px;color:var(--text3);">Costo: <span style="color:var(--warn);">S/ ' + valoriz + '</span></span>' +
-            '<span style="font-size:10px;color:var(--text3);">Venta: <span style="color:#22c55e;">S/ ' + proyecc + '</span></span>' +
-          '</div>' +
-        '</div>' +
-        '<span class="stock-badge ' + badgeClass + '" style="white-space:nowrap;">' + stockStr + ' <span style="font-size:10px;">' + esc(p.unidad) + '</span></span>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
+    var seleccionado = stockEstado.productoSeleccionado && stockEstado.productoSeleccionado.codigo === p.codigo;
 
+    html += '<tr style="cursor:pointer;' + (seleccionado ? 'background:rgba(79,142,247,.08);' : '') + '" onclick="seleccionarProductoStock(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')">' +
+      '<td>' +
+        '<div style="font-size:13px;">' + esc(p.nombre) +
+          (esPaqueteIndep ? '<span style="font-size:10px;color:var(--text3);margin-left:4px;">[paq. indep.]</span>' : '') +
+        '</div>' +
+        '<div style="font-size:10px;color:var(--text3);font-family:var(--mono);">' + esc(p.codigo) + ' · ' + esc(p.unidad) + '</div>' +
+      '</td>' +
+      '<td class="td-num">' +
+        '<span class="stock-badge ' + badgeClass + '">' + stockStr + '</span>' +
+      '</td>' +
+      '<td class="td-num" style="color:var(--warn);font-family:var(--mono);">' + valoriz + '</td>' +
+      '<td class="td-num" style="color:#22c55e;font-family:var(--mono);">' + proyecc + '</td>' +
+    '</tr>';
+  });
+
+  // Fila de totales
+  html += '<tr class="totals-row">' +
+    '<td><b>TOTAL</b></td>' +
+    '<td></td>' +
+    '<td class="td-num" style="color:var(--warn);"><b>' + totalValor.toFixed(2) + '</b></td>' +
+    '<td class="td-num" style="color:#22c55e;"><b>' + totalProyeccion.toFixed(2) + '</b></td>' +
+  '</tr>';
+
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
 var stockSearchTimeout = null;
 function filtrarListaStock(q) {
   clearTimeout(stockSearchTimeout);
