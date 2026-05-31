@@ -522,9 +522,12 @@ window.onload = function() {
       if (cfgObj.sheetId) localStorage.setItem('dcafiro_sheet_id', cfgObj.sheetId);
     } catch(e) {}
   }
-  if (tokenGuardado && emailGuardado) {
+  // Recuperar email desde sessionStorage o localStorage como respaldo
+  var emailFinal = emailGuardado || localStorage.getItem('dcafiro_user_email') || '';
+  if (tokenGuardado && emailFinal) {
     estado.tokenAcceso = tokenGuardado;
-    estado.usuario = emailGuardado;
+    estado.usuario = emailFinal;
+    if (!emailGuardado) sessionStorage.setItem('user_email', emailFinal);
     estado.tokenExpira = tokenExpira;
     // Si el token ya expiró, renovar al entrar
     var ahora = Date.now();
@@ -574,6 +577,7 @@ function iniciarLogin() {
           estado.usuario = info.email || '';
           if (estado.usuario) {
             sessionStorage.setItem('user_email', estado.usuario);
+            localStorage.setItem('dcafiro_user_email', estado.usuario);
           }
           mostrarApp();
         });
@@ -1034,7 +1038,7 @@ function registrarVenta() {
   if (isNaN(importe) || importe < 0) { toast('Ingresa un importe válido', 'error'); return; }
 
   // Asegurar email siempre disponible
-  var emailUsuario = estado.usuario || sessionStorage.getItem('user_email') || '';
+  var emailUsuario = estado.usuario || sessionStorage.getItem('user_email') || localStorage.getItem('dcafiro_user_email') || '';
 
   var ahora = new Date();
   var timestamp = ahora.toISOString();
@@ -1090,33 +1094,59 @@ function cargarHistorialHoy() {
   .then(function(data) {
     if (!data.values || data.values.length < 2) {
       el.innerHTML = '<div class="empty-state">Sin registros hoy</div>';
+      document.getElementById('historial-resumen').style.display = 'none';
       return;
     }
     var hoy = new Date().toISOString().slice(0,10);
-    var filas = data.values.slice(1).filter(function(f) {
-      return f[1] === hoy && f[3] === estado.usuario;
+    var emailActual = estado.usuario || sessionStorage.getItem('user_email') || '';
+    var todasHoy = data.values.slice(1).filter(function(f) {
+      if (f[1] !== hoy) return false;
+      if (!f[3] || f[3] === 'undefined') return true;
+      return f[3] === emailActual;
     });
-    if (filas.length === 0) {
+
+    if (todasHoy.length === 0) {
       el.innerHTML = '<div class="empty-state">No tienes registros hoy</div>';
+      document.getElementById('historial-resumen').style.display = 'none';
       return;
     }
-    // Invertir para ver más recientes primero
-    filas = filas.reverse();
-    el.innerHTML = filas.map(function(f, idx) {
-      var esAnulada = f[10] === 'ANULACION';
+
+    // Identificar anulaciones
+    var anuladas = {};
+    todasHoy.forEach(function(f) {
+      if (f[10] === 'ANULACION' && f[11]) anuladas[f[11]] = true;
+    });
+
+    // Resumen para cuadre de caja
+    var ventasActivas = todasHoy.filter(function(f) { return f[10] === 'VENTA' && !anuladas[f[0]]; });
+    var totalImporte = ventasActivas.reduce(function(sum, f) { return sum + (parseFloat(f[8]) || 0); }, 0);
+    var totalAnulaciones = todasHoy.filter(function(f) { return f[10] === 'ANULACION'; }).length;
+
+    document.getElementById('historial-resumen').style.display = 'block';
+    document.getElementById('res-transacciones').textContent = ventasActivas.length;
+    document.getElementById('res-total').textContent = 'S/ ' + totalImporte.toFixed(2);
+    document.getElementById('res-anuladas').textContent = totalAnulaciones;
+
+    // Lista invertida (más recientes primero)
+    var filas = todasHoy.slice().reverse();
+    el.innerHTML = filas.map(function(f) {
+      var esAnulacion = f[10] === 'ANULACION';
+      var esAnulada = f[10] === 'VENTA' && anuladas[f[0]];
       var timestamp = f[0];
-      return '<div class="venta-item' + (esAnulada ? ' anulada' : '') + '">' +
+      return '<div class="venta-item' + (esAnulacion || esAnulada ? ' anulada' : '') + '">' +
         '<div class="venta-info">' +
-          '<div class="venta-nombre">' + esc(f[5] || '') +
-            '<span class="badge ' + (esAnulada ? 'badge-anulada' : 'badge-venta') + '">' +
-            (esAnulada ? 'ANULADA' : 'VENTA') + '</span>' +
+          '<div class="venta-nombre">' + esc(f[5] || (esAnulacion ? '— Anulación —' : '')) +
+            '<span class="badge ' + (esAnulacion || esAnulada ? 'badge-anulada' : 'badge-venta') + '">' +
+            (esAnulacion ? 'ANULACIÓN' : (esAnulada ? 'ANULADA' : 'VENTA')) + '</span>' +
           '</div>' +
-          '<div class="venta-meta">' + esc(f[4] || '') + ' · ' + esc(f[6] || '') + ' · x' + esc(f[7] || '') + ' · ' + esc(f[2] || '') + '</div>' +
-          (esAnulada && f[12] ? '<div class="venta-meta" style="color:var(--danger);">Motivo: ' + esc(f[12]) + '</div>' : '') +
+          '<div class="venta-meta">' + (esAnulacion
+            ? 'Motivo: ' + esc(f[12] || '')
+            : esc(f[4] || '') + ' · ' + esc(f[6] || '') + ' · x' + esc(f[7] || '') + ' · ' + esc(f[2] || '')) + '</div>' +
+          (esAnulada ? '<div class="venta-meta" style="color:var(--danger);">Esta venta fue anulada</div>' : '') +
         '</div>' +
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">' +
-          '<div class="venta-importe">S/ ' + (parseFloat(f[8]) || 0).toFixed(2) + '</div>' +
-          (!esAnulada ? '<button class="btn btn-sm btn-danger" onclick="abrirAnulacion(\'' + timestamp.replace(/'/g,"\\'") + '\')">Anular</button>' : '') +
+          (!esAnulacion ? '<div class="venta-importe' + (esAnulada ? '" style="text-decoration:line-through;opacity:.5;color:var(--text2)' : '') + '">S/ ' + (parseFloat(f[8]) || 0).toFixed(2) + '</div>' : '') +
+          (!esAnulacion && !esAnulada ? '<button class="btn btn-sm btn-danger" onclick="abrirAnulacion(\'' + timestamp.replace(/'/g, "\'") + '\')">Anular</button>' : '') +
         '</div>' +
       '</div>';
     }).join('');
@@ -1152,7 +1182,7 @@ function confirmarAnulacion() {
   var hoja = estado.config.hojaVentas;
   var fila = [[
     timestamp, fecha, hora,
-    estado.usuario || sessionStorage.getItem('user_email') || '',
+    estado.usuario || sessionStorage.getItem('user_email') || localStorage.getItem('dcafiro_user_email') || '',
     '', '', '', '', '', '',
     'ANULACION', estado.ventaParaAnular, motivo
   ]];
@@ -1523,7 +1553,7 @@ function registrarMovimientoStock() {
   var motivo = document.getElementById('stock-motivo').value.trim();
   if (!motivo) { toast('Ingresa un motivo o descripción', 'error'); return; }
 
-  var emailUsuario = estado.usuario || sessionStorage.getItem('user_email') || '';
+  var emailUsuario = estado.usuario || sessionStorage.getItem('user_email') || localStorage.getItem('dcafiro_user_email') || '';
   var ahora = new Date();
   var timestamp = ahora.toISOString();
   var fecha = ahora.toISOString().slice(0,10);
