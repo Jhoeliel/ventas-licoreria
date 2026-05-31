@@ -492,9 +492,10 @@ var SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 var estado = {
   usuario: null,
   tokenAcceso: null,
-  tokenExpira: null,   // timestamp ms cuando expira
-  tokenCliente: null,  // referencia al cliente OAuth para renovar
+  tokenExpira: null,
+  tokenCliente: null,
   productos: [],
+  productoMap: {},     // índice por código para búsquedas rápidas
   productoSeleccionado: null,
   ventaParaAnular: null,
   config: {
@@ -917,26 +918,34 @@ function cargarProductos() {
   if (!estado.config.sheetId) return;
   document.getElementById('cfg-status').textContent = 'Cargando productos...';
   var hoja = estado.config.hojaProductos;
-  sheetsGet(hoja + '!A:E')
+  sheetsGet(hoja + '!A:H')
   .then(function(data) {
     if (!data.values || data.values.length < 2) {
       document.getElementById('cfg-status').textContent = 'Sin productos encontrados en la hoja.';
       return;
     }
     var filas = data.values;
-    var header = filas[0];
     estado.productos = [];
+    // Construir índice de productos por código para vínculos
+    var tempMap = {};
     for (var i = 1; i < filas.length; i++) {
       var f = filas[i];
       if (!f[0] && !f[1]) continue;
-      estado.productos.push({
-        codigo: f[0] || '',
-        nombre: f[1] || '',
-        unidad: f[2] || '',
-        precio: parseFloat(f[3]) || 0,
-        costo: parseFloat(f[4]) || 0
-      });
+      var prod = {
+        codigo:  f[0] || '',
+        nombre:  f[1] || '',
+        unidad:  f[2] || '',
+        precio:  parseFloat(f[3]) || 0,
+        costo:   parseFloat(f[4]) || 0,
+        tipo:    f[5] || 'UNIDAD',   // UNIDAD o PAQUETE
+        factor:  parseInt(f[6]) || 1, // unidades por paquete
+        vinculo: f[7] || ''           // código del producto vinculado
+      };
+      estado.productos.push(prod);
+      tempMap[prod.codigo] = prod;
     }
+    // Guardar mapa de productos por código para búsquedas rápidas
+    estado.productoMap = tempMap;
     document.getElementById('cfg-status').textContent = '✓ ' + estado.productos.length + ' productos cargados';
     toast(estado.productos.length + ' productos cargados', 'success');
     renderListaProductos(estado.productos);
@@ -1401,11 +1410,11 @@ function calcularStockProyectado() {
       if (f[10] === 'ANULACION' && f[11]) anuladas[f[11]] = true;
     });
 
-    // Por producto, encontrar último AJUSTE y calcular desde ahí
+    // Agrupar movimientos de stock por código
     var porProducto = {};
     movStock.forEach(function(f) {
       var codigo = f[4] || '';
-      if (!codigo) return;
+      if (!codigo || codigo === 'Código') return;
       if (!porProducto[codigo]) porProducto[codigo] = [];
       porProducto[codigo].push({
         timestamp: f[0] || '',
@@ -1417,44 +1426,59 @@ function calcularStockProyectado() {
     stockEstado.stockCalculado = {};
 
     estado.productos.forEach(function(p) {
-      var movs = porProducto[p.codigo] || [];
+      // Solo se calcula stock para unidades de inventario:
+      // - Tipo UNIDAD (siempre)
+      // - Tipo PAQUETE sin vínculo (se inventaría como entidad independiente)
+      var esUnidadInventario = p.tipo === 'UNIDAD' || (p.tipo === 'PAQUETE' && !p.vinculo);
+      if (!esUnidadInventario) return;
 
-      // Ordenar por timestamp
+      var movs = (porProducto[p.codigo] || []).slice();
       movs.sort(function(a, b) { return a.timestamp.localeCompare(b.timestamp); });
 
-      // Encontrar índice del último AJUSTE
-      var baseIdx = -1;
-      var base = 0;
+      // Encontrar último AJUSTE como base
+      var baseIdx = -1, base = 0;
       for (var i = movs.length - 1; i >= 0; i--) {
-        if (movs[i].tipo === 'AJUSTE') {
-          baseIdx = i;
-          base = movs[i].cantidad;
-          break;
-        }
+        if (movs[i].tipo === 'AJUSTE') { baseIdx = i; base = movs[i].cantidad; break; }
       }
-
       var baseTimestamp = baseIdx >= 0 ? movs[baseIdx].timestamp : '';
 
-      // Sumar movimientos posteriores al último ajuste
+      // Stock base desde el último ajuste
       var stock = base;
       for (var j = baseIdx + 1; j < movs.length; j++) {
         if (movs[j].tipo === 'ENTRADA') stock += movs[j].cantidad;
         else if (movs[j].tipo === 'SALIDA') stock -= movs[j].cantidad;
       }
 
-      // Restar ventas posteriores al último ajuste (no anuladas)
+      // Sumar movimientos de paquetes vinculados a esta unidad (convertidos)
+      estado.productos.forEach(function(paq) {
+        if (paq.tipo !== 'PAQUETE' || paq.vinculo !== p.codigo) return;
+        var factor = paq.factor || 1;
+        var movsPaq = (porProducto[paq.codigo] || []).slice();
+        movsPaq.sort(function(a, b) { return a.timestamp.localeCompare(b.timestamp); });
+        movsPaq.forEach(function(m) {
+          if (baseTimestamp && m.timestamp <= baseTimestamp) return;
+          if (m.tipo === 'ENTRADA') stock += m.cantidad * factor;
+          else if (m.tipo === 'SALIDA') stock -= m.cantidad * factor;
+        });
+      });
+
+      // Restar ventas (unidad directa + paquetes vinculados convertidos)
       movVentas.forEach(function(f) {
-        if (f[4] !== p.codigo) return;
-        if (f[10] !== 'VENTA') return;
-        if (anuladas[f[0]]) return;
+        if (f[10] !== 'VENTA' || anuladas[f[0]]) return;
         if (baseTimestamp && f[0] <= baseTimestamp) return;
-        stock -= parseFloat(f[7]) || 0;
+        if (f[4] === p.codigo) {
+          stock -= parseFloat(f[7]) || 0;
+          return;
+        }
+        var prodVenta = estado.productoMap[f[4]];
+        if (prodVenta && prodVenta.tipo === 'PAQUETE' && prodVenta.vinculo === p.codigo) {
+          stock -= (parseFloat(f[7]) || 0) * (prodVenta.factor || 1);
+        }
       });
 
       stockEstado.stockCalculado[p.codigo] = Math.round(stock * 100) / 100;
     });
   }).catch(function() {
-    // Si falla (hoja vacía), stock = 0 para todos
     estado.productos.forEach(function(p) {
       if (stockEstado.stockCalculado[p.codigo] === undefined) {
         stockEstado.stockCalculado[p.codigo] = 0;
@@ -1474,19 +1498,60 @@ function renderListaStock(lista) {
     count.textContent = '';
     return;
   }
-  count.textContent = lista.length + ' productos';
-  el.innerHTML = lista.map(function(p) {
+
+  // Filtrar solo unidades de inventario para la lista principal
+  var listaInventario = lista.filter(function(p) {
+    return p.tipo === 'UNIDAD' || (p.tipo === 'PAQUETE' && !p.vinculo);
+  });
+
+  // Calcular totales de valorización y proyección
+  var totalValor = 0, totalProyeccion = 0;
+  listaInventario.forEach(function(p) {
+    var stock = stockEstado.stockCalculado[p.codigo] || 0;
+    if (stock > 0) {
+      totalValor += stock * p.costo;
+      totalProyeccion += stock * p.precio;
+    }
+  });
+
+  // Header con totales
+  var header = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">' +
+    '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;">' +
+      '<div style="font-size:10px;color:var(--text2);margin-bottom:2px;">VALOR EN INVENTARIO</div>' +
+      '<div style="font-family:var(--mono);font-size:14px;color:var(--warn);">S/ ' + totalValor.toFixed(2) + '</div>' +
+    '</div>' +
+    '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;">' +
+      '<div style="font-size:10px;color:var(--text2);margin-bottom:2px;">PROYECCIÓN DE VENTA</div>' +
+      '<div style="font-family:var(--mono);font-size:14px;color:#22c55e;">S/ ' + totalProyeccion.toFixed(2) + '</div>' +
+    '</div>' +
+  '</div>';
+
+  count.innerHTML = listaInventario.length + ' productos inventariables' +
+    (lista.length !== listaInventario.length ? ' <span style="color:var(--text3);font-size:10px;">(' + (lista.length - listaInventario.length) + ' paquetes vinculados excluidos)</span>' : '');
+
+  el.innerHTML = header + listaInventario.map(function(p) {
     var stock = stockEstado.stockCalculado[p.codigo];
+    var stockNum = stock !== undefined ? stock : 0;
     var stockStr = stock === undefined ? '—' : stock.toFixed(2);
     var badgeClass = stock === undefined ? 'zero' : (stock <= 0 ? 'zero' : (stock < 5 ? 'low' : 'ok'));
     var seleccionado = stockEstado.productoSeleccionado && stockEstado.productoSeleccionado.codigo === p.codigo;
+    var valoriz = (stockNum * p.costo).toFixed(2);
+    var proyecc = (stockNum * p.precio).toFixed(2);
+    var esPaqueteIndep = p.tipo === 'PAQUETE' && !p.vinculo;
     return '<div class="prod-item' + (seleccionado ? ' selected' : '') + '" onclick="seleccionarProductoStock(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
-        '<div>' +
-          '<div class="prod-name">' + esc(p.nombre) + '</div>' +
-          '<div class="prod-meta">' + esc(p.codigo) + ' · ' + esc(p.unidad) + '</div>' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div class="prod-name">' + esc(p.nombre) +
+            (esPaqueteIndep ? '<span style="font-size:10px;color:var(--text3);margin-left:6px;">[paquete indep.]</span>' : '') +
+          '</div>' +
+          '<div class="prod-meta">' + esc(p.codigo) + ' · ' + esc(p.unidad) +
+            (p.vinculo ? ' · vinculado a ' + esc(p.vinculo) : '') + '</div>' +
+          '<div style="display:flex;gap:8px;margin-top:4px;">' +
+            '<span style="font-size:10px;color:var(--text3);">Costo: <span style="color:var(--warn);">S/ ' + valoriz + '</span></span>' +
+            '<span style="font-size:10px;color:var(--text3);">Venta: <span style="color:#22c55e;">S/ ' + proyecc + '</span></span>' +
+          '</div>' +
         '</div>' +
-        '<span class="stock-badge ' + badgeClass + '">' + stockStr + ' ' + esc(p.unidad) + '</span>' +
+        '<span class="stock-badge ' + badgeClass + '" style="white-space:nowrap;">' + stockStr + ' <span style="font-size:10px;">' + esc(p.unidad) + '</span></span>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -1515,12 +1580,25 @@ function filtrarListaStock(q) {
 function seleccionarProductoStock(p) {
   stockEstado.productoSeleccionado = p;
   document.getElementById('stock-sel-name').textContent = p.nombre;
-  document.getElementById('stock-sel-meta').textContent = p.codigo + ' · ' + p.unidad;
+
+  // Mostrar info del tipo y factor en el subtítulo
+  var metaInfo = p.codigo + ' · ' + p.unidad;
+  if (p.tipo === 'PAQUETE' && p.vinculo) {
+    metaInfo += ' · Paquete de ' + p.factor + ' unidades → stock en ' + p.vinculo;
+  } else if (p.tipo === 'PAQUETE' && !p.vinculo) {
+    metaInfo += ' · Paquete independiente';
+  }
+  document.getElementById('stock-sel-meta').textContent = metaInfo;
+
   document.getElementById('card-stock-form').style.display = 'block';
   document.getElementById('stock-cantidad').value = '';
   document.getElementById('stock-motivo').value = '';
-  var stockActual = stockEstado.stockCalculado[p.codigo];
+
+  // Mostrar stock del producto de inventario correspondiente
+  var codInventario = (p.tipo === 'PAQUETE' && p.vinculo) ? p.vinculo : p.codigo;
+  var stockActual = stockEstado.stockCalculado[codInventario];
   document.getElementById('stock-proyectado').value = stockActual !== undefined ? stockActual.toFixed(2) : '0.00';
+
   seleccionarTipo('ENTRADA');
   document.getElementById('card-stock-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
   filtrarListaStock(document.getElementById('stock-search').value);
@@ -1538,7 +1616,11 @@ function seleccionarTipo(tipo) {
     var btn = document.getElementById('tipo-' + t);
     if (btn) btn.classList.toggle('active', t === tipo);
   });
-  var labels = { ENTRADA: 'Cantidad recibida', SALIDA: 'Cantidad a retirar', AJUSTE: 'Stock físico real (reemplaza)' };
+  var p = stockEstado.productoSeleccionado;
+  var esPaquete = p && p.tipo === 'PAQUETE' && p.vinculo;
+  var labels = esPaquete
+    ? { ENTRADA: 'Cant. de paquetes recibidos (x' + (p ? p.factor : '?') + ' uds c/u)', SALIDA: 'Cant. de paquetes a retirar', AJUSTE: 'Stock físico real en unidades (reemplaza)' }
+    : { ENTRADA: 'Cantidad recibida', SALIDA: 'Cantidad a retirar', AJUSTE: 'Stock físico real (reemplaza)' };
   document.getElementById('label-cantidad-stock').textContent = labels[tipo] || 'Cantidad';
 }
 
