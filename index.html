@@ -236,6 +236,23 @@
   .stock-badge.low { background: rgba(251,191,36,.1); color: var(--warn); }
   .stock-badge.zero { background: rgba(248,113,113,.1); color: var(--danger); }
 
+  /* ADMIN ONLY */
+  .admin-only { display: none; }
+  .admin-only.visible { display: block; }
+
+  /* ROLE BADGE */
+  .role-badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 10px;
+    font-family: var(--mono); letter-spacing: 0.5px; margin-left: 6px;
+  }
+  .role-badge.admin { background: rgba(204,32,32,.2); color: var(--accent); }
+  .role-badge.operador { background: rgba(158,154,160,.15); color: var(--text2); }
+
+  /* PRODUCTOS PANEL */
+  .prod-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .prod-status-active { color: #22c55e; }
+  .prod-status-inactive { color: var(--danger); }
+
   /* SPINNER */
   .spinner {
     width: 18px; height: 18px; border: 2px solid var(--border);
@@ -277,17 +294,18 @@
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <span class="user-badge" id="user-email-badge"></span>
+      <span class="user-badge" id="user-email-badge"></span><span class="role-badge" id="role-badge"></span>
       <button class="btn-logout" onclick="cerrarSesion()">Salir</button>
     </div>
   </header>
 
   <nav>
-    <button class="nav-btn active" onclick="mostrarPanel('panel-registro', this)">+ Nueva Venta</button>
-    <button class="nav-btn" onclick="mostrarPanel('panel-historial', this); cargarHistorialHoy()">Mis Ventas Hoy</button>
-    <button class="nav-btn" onclick="mostrarPanel('panel-reporte', this); cargarReporte()">Reporte por Fechas</button>
-    <button class="nav-btn" onclick="mostrarPanel('panel-stock', this); cargarPanelStock()">📦 Stock</button>
-    <button class="nav-btn" onclick="mostrarPanel('panel-config', this)">⚙ Config</button>
+    <button class="nav-btn active" id="nav-registro" onclick="mostrarPanel('panel-registro', this)">+ Nueva Venta</button>
+    <button class="nav-btn" id="nav-historial" onclick="mostrarPanel('panel-historial', this); cargarHistorialHoy()">Mis Ventas Hoy</button>
+    <button class="nav-btn admin-only" id="nav-reporte" onclick="mostrarPanel('panel-reporte', this); cargarReporte()">Reporte por Fechas</button>
+    <button class="nav-btn admin-only" id="nav-stock" onclick="mostrarPanel('panel-stock', this); cargarPanelStock()">📦 Stock</button>
+    <button class="nav-btn admin-only" id="nav-productos" onclick="mostrarPanel('panel-productos', this); cargarPanelProductos()">🗂 Productos</button>
+    <button class="nav-btn admin-only" id="nav-config" onclick="mostrarPanel('panel-config', this)">⚙ Config</button>
   </nav>
 
   <main>
@@ -367,6 +385,101 @@
           <button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);" onclick="cargarReporte()">↺ Actualizar</button>
         </div>
         <div id="reporte-content"><div class="empty-state">Selecciona un rango de fechas</div></div>
+      </div>
+    </div>
+
+    <!-- PANEL PRODUCTOS -->
+    <div class="panel" id="panel-productos">
+
+      <!-- Formulario nuevo/editar producto -->
+      <div class="card" id="card-prod-form" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="card-title" style="margin:0;" id="prod-form-title">Nuevo Producto</div>
+          <button onclick="cerrarFormProducto()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;">✕</button>
+        </div>
+        <div class="prod-form-grid">
+          <div class="input-group">
+            <label>Código (auto)</label>
+            <input type="text" id="prod-codigo" readonly style="opacity:.6;cursor:not-allowed;" placeholder="Se genera automático">
+          </div>
+          <div class="input-group">
+            <label>Nombre *</label>
+            <input type="text" id="prod-nombre" placeholder="Nombre del producto" oninput="generarCodigoPreview()">
+          </div>
+          <div class="input-group">
+            <label>Unidad</label>
+            <input type="text" id="prod-unidad" placeholder="NIU, PQT, CJ...">
+          </div>
+          <div class="input-group">
+            <label>Precio de venta S/</label>
+            <input type="number" id="prod-precio" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="input-group">
+            <label>Costo S/</label>
+            <input type="number" id="prod-costo" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="input-group">
+            <label>Tipo</label>
+            <select id="prod-tipo" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;" onchange="onTipoCambio()">
+              <option value="UNIDAD">UNIDAD</option>
+              <option value="PAQUETE">PAQUETE</option>
+            </select>
+          </div>
+          <div class="input-group" id="prod-factor-group" style="display:none;">
+            <label>Factor (unidades por paquete)</label>
+            <input type="number" id="prod-factor" min="1" step="1" placeholder="ej. 6, 12, 20">
+          </div>
+          <div class="input-group">
+            <label>Estado</label>
+            <select id="prod-estado" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;">
+              <option value="ACTIVO">ACTIVO</option>
+              <option value="INACTIVO">INACTIVO</option>
+            </select>
+          </div>
+        </div>
+        <div id="prod-vinculo-group" style="margin-bottom:12px;display:none;">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px;">Vínculo (producto relacionado)</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="prod-vinculo-codigo" readonly style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:12px;" placeholder="Sin vínculo">
+            <input type="text" id="prod-vinculo-nombre" readonly style="flex:2;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text2);font-size:12px;" placeholder="—">
+            <button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);white-space:nowrap;" onclick="abrirSelectorVinculo()">Cambiar</button>
+            <button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--danger);color:var(--danger);" onclick="quitarVinculo()">✕</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="guardarProducto()" id="btn-guardar-prod">Guardar producto</button>
+          <button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);" onclick="cerrarFormProducto()">Cancelar</button>
+        </div>
+      </div>
+
+      <!-- Modal selector de vínculo -->
+      <div id="modal-vinculo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;align-items:center;justify-content:center;padding:16px;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:440px;width:100%;max-height:80vh;display:flex;flex-direction:column;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <span style="font-size:14px;font-weight:500;">Seleccionar producto vinculado</span>
+            <button onclick="cerrarSelectorVinculo()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;">✕</button>
+          </div>
+          <input type="text" id="vinculo-search" placeholder="Buscar..." oninput="filtrarSelectorVinculo(this.value)"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;margin-bottom:8px;">
+          <div id="vinculo-lista" style="overflow-y:auto;flex:1;"></div>
+        </div>
+      </div>
+
+      <!-- Lista de productos -->
+      <div class="card">
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick="abrirFormNuevoProducto()">+ Nuevo producto</button>
+          <input type="text" id="prod-search" placeholder="Buscar..." oninput="filtrarListaProductosAdmin(this.value)"
+            style="flex:1;min-width:150px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;">
+          <select id="prod-filtro-estado" onchange="filtrarListaProductosAdmin(document.getElementById('prod-search').value)"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:12px;outline:none;">
+            <option value="TODOS">Todos</option>
+            <option value="ACTIVO">Activos</option>
+            <option value="INACTIVO">Inactivos</option>
+          </select>
+        </div>
+        <div id="prod-admin-count" style="font-size:11px;color:var(--text3);margin-bottom:8px;font-family:var(--mono);"></div>
+        <div id="prod-admin-lista" style="max-height:60vh;overflow-y:auto;"></div>
       </div>
     </div>
 
@@ -491,11 +604,12 @@ var SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 // ============================================================
 var estado = {
   usuario: null,
+  rolUsuario: null,    // 'ADMIN' o 'OPERADOR'
   tokenAcceso: null,
   tokenExpira: null,
   tokenCliente: null,
   productos: [],
-  productoMap: {},     // índice por código para búsquedas rápidas
+  productoMap: {},
   productoSeleccionado: null,
   ventaParaAnular: null,
   config: {
@@ -640,9 +754,61 @@ function mostrarApp() {
   document.getElementById('user-email-badge').textContent = estado.usuario;
   if (estado.config.sheetId) {
     cargarConfigRemota().then(function() {
+      return cargarRolUsuario();
+    }).then(function() {
+      aplicarRol();
       cargarProductos();
       asegurarEncabezadosVentas();
     });
+  } else {
+    // Sin sheetId aún — mostrar como operador hasta que se configure
+    estado.rolUsuario = 'OPERADOR';
+    aplicarRol();
+  }
+}
+
+function cargarRolUsuario() {
+  // Lee la hoja Usuarios y determina el rol del usuario actual
+  return sheetsGet('Usuarios!A:B')
+  .then(function(data) {
+    var email = estado.usuario || '';
+    var rol = 'OPERADOR'; // por defecto
+    if (data.values && data.values.length > 1) {
+      for (var i = 1; i < data.values.length; i++) {
+        var fila = data.values[i];
+        if (fila[0] && fila[0].trim().toLowerCase() === email.toLowerCase()) {
+          rol = (fila[1] || '').trim().toUpperCase();
+          break;
+        }
+      }
+    }
+    estado.rolUsuario = (rol === 'ADMIN' || rol === 'ADMINISTRADOR') ? 'ADMIN' : 'OPERADOR';
+  })
+  .catch(function() {
+    // Si no existe la hoja Usuarios, asumir OPERADOR por seguridad
+    estado.rolUsuario = 'OPERADOR';
+  });
+}
+
+function aplicarRol() {
+  var esAdmin = estado.rolUsuario === 'ADMIN';
+  // Mostrar/ocultar pestañas según rol
+  document.querySelectorAll('.admin-only').forEach(function(el) {
+    el.classList.toggle('visible', esAdmin);
+  });
+  // Badge de rol
+  var badge = document.getElementById('role-badge');
+  if (badge) {
+    badge.textContent = esAdmin ? 'ADMIN' : 'OPERADOR';
+    badge.className = 'role-badge ' + (esAdmin ? 'admin' : 'operador');
+  }
+  // Si es operador y está en una pestaña de admin, redirigir a Nueva Venta
+  if (!esAdmin) {
+    var panelActivo = document.querySelector('.panel.active');
+    if (panelActivo && (panelActivo.id === 'panel-reporte' || panelActivo.id === 'panel-stock' ||
+        panelActivo.id === 'panel-config' || panelActivo.id === 'panel-productos')) {
+      mostrarPanel('panel-registro', document.getElementById('nav-registro'));
+    }
   }
 }
 
@@ -918,7 +1084,7 @@ function cargarProductos() {
   if (!estado.config.sheetId) return;
   document.getElementById('cfg-status').textContent = 'Cargando productos...';
   var hoja = estado.config.hojaProductos;
-  sheetsGet(hoja + '!A:H')
+  sheetsGet(hoja + '!A:I')
   .then(function(data) {
     if (!data.values || data.values.length < 2) {
       document.getElementById('cfg-status').textContent = 'Sin productos encontrados en la hoja.';
@@ -937,11 +1103,17 @@ function cargarProductos() {
         unidad:  f[2] || '',
         precio:  parseFloat(f[3]) || 0,
         costo:   parseFloat(f[4]) || 0,
-        tipo:    f[5] || 'UNIDAD',   // UNIDAD o PAQUETE
-        factor:  parseInt(f[6]) || 1, // unidades por paquete
-        vinculo: f[7] || ''           // código del producto vinculado
+        tipo:    f[5] || 'UNIDAD',
+        factor:  parseInt(f[6]) || 1,
+        vinculo: f[7] || '',
+        estado:  f[8] || 'ACTIVO',    // ACTIVO o INACTIVO
+        fila:    i + 1                 // fila en el sheet (1-indexed, con encabezado)
       };
-      estado.productos.push(prod);
+      // Para ventas y stock solo cargar productos ACTIVOS
+      if (prod.estado !== 'INACTIVO') {
+        estado.productos.push(prod);
+      }
+      // El mapa incluye todos (para reportes históricos y mantenimiento)
       tempMap[prod.codigo] = prod;
     }
     // Guardar mapa de productos por código para búsquedas rápidas
@@ -1734,6 +1906,282 @@ function asegurarEncabezadosHoja(hoja, encabezados) {
       headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: [encabezados] })
     });
+  });
+}
+
+// ============================================================
+// PRODUCTOS — MANTENIMIENTO (SOLO ADMIN)
+// ============================================================
+var prodEstado = {
+  modoEdicion: false,
+  productoEditando: null,    // producto completo al editar
+  filaEditando: null,        // fila en el sheet
+  todosProductos: [],        // catálogo completo incluyendo inactivos
+  vinculoSeleccionado: null  // producto seleccionado en el modal de vínculo
+};
+
+function cargarPanelProductos() {
+  if (estado.rolUsuario !== 'ADMIN') { toast('Sin permisos', 'error'); return; }
+  var hoja = estado.config.hojaProductos;
+  sheetsGet(hoja + '!A:I')
+  .then(function(data) {
+    prodEstado.todosProductos = [];
+    if (!data.values || data.values.length < 2) return;
+    for (var i = 1; i < data.values.length; i++) {
+      var f = data.values[i];
+      if (!f[0] && !f[1]) continue;
+      prodEstado.todosProductos.push({
+        codigo: f[0] || '', nombre: f[1] || '', unidad: f[2] || '',
+        precio: parseFloat(f[3]) || 0, costo: parseFloat(f[4]) || 0,
+        tipo: f[5] || 'UNIDAD', factor: parseInt(f[6]) || 1,
+        vinculo: f[7] || '', estado: f[8] || 'ACTIVO', fila: i + 1
+      });
+    }
+    renderListaProductosAdmin(prodEstado.todosProductos);
+  })
+  .catch(function() { toast('Error al cargar productos', 'error'); });
+}
+
+function renderListaProductosAdmin(lista) {
+  var el = document.getElementById('prod-admin-lista');
+  var count = document.getElementById('prod-admin-count');
+  if (!lista || lista.length === 0) {
+    el.innerHTML = '<div class="empty-state">Sin productos</div>';
+    count.textContent = '';
+    return;
+  }
+  count.textContent = lista.length + ' productos';
+  el.innerHTML = lista.map(function(p) {
+    var esActivo = p.estado !== 'INACTIVO';
+    var vinculoNombre = '';
+    if (p.vinculo) {
+      var vp = prodEstado.todosProductos.find(function(x) { return x.codigo === p.vinculo; });
+      vinculoNombre = vp ? vp.nombre.substring(0, 30) : p.vinculo;
+    }
+    return '<div class="venta-item" style="' + (!esActivo ? 'opacity:.45;' : '') + '">' +
+      '<div class="venta-info" style="flex:1;min-width:0;">' +
+        '<div class="venta-nombre">' + esc(p.nombre) +
+          '<span class="badge ' + (esActivo ? 'badge-venta' : 'badge-anulada') + '">' + (esActivo ? 'ACTIVO' : 'INACTIVO') + '</span>' +
+          '<span style="font-size:10px;color:var(--text3);margin-left:4px;">' + esc(p.tipo) + (p.tipo === 'PAQUETE' ? ' x'+p.factor : '') + '</span>' +
+        '</div>' +
+        '<div class="venta-meta">' + esc(p.codigo) + ' · ' + esc(p.unidad) +
+          ' · S/ ' + p.precio.toFixed(2) + ' · Costo: ' + p.costo.toFixed(2) +
+          (p.vinculo ? ' · 🔗 ' + esc(vinculoNombre) : '') +
+        '</div>' +
+      '</div>' +
+      '<button class="btn btn-sm" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);white-space:nowrap;" onclick="abrirFormEditarProducto(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')">Editar</button>' +
+    '</div>';
+  }).join('');
+}
+
+function filtrarListaProductosAdmin(q) {
+  var filtroEstado = document.getElementById('prod-filtro-estado').value;
+  var lista = prodEstado.todosProductos.filter(function(p) {
+    if (filtroEstado === 'ACTIVO' && p.estado === 'INACTIVO') return false;
+    if (filtroEstado === 'INACTIVO' && p.estado !== 'INACTIVO') return false;
+    if (!q || q.trim() === '') return true;
+    var ql = q.toLowerCase();
+    return p.nombre.toLowerCase().indexOf(ql) !== -1 || p.codigo.toLowerCase().indexOf(ql) !== -1;
+  });
+  renderListaProductosAdmin(lista);
+}
+
+// ============================================================
+// PRODUCTOS — FORMULARIO
+// ============================================================
+function abrirFormNuevoProducto() {
+  prodEstado.modoEdicion = false;
+  prodEstado.productoEditando = null;
+  prodEstado.vinculoSeleccionado = null;
+  document.getElementById('prod-form-title').textContent = 'Nuevo Producto';
+  document.getElementById('prod-codigo').value = '';
+  document.getElementById('prod-nombre').value = '';
+  document.getElementById('prod-unidad').value = '';
+  document.getElementById('prod-precio').value = '';
+  document.getElementById('prod-costo').value = '';
+  document.getElementById('prod-tipo').value = 'UNIDAD';
+  document.getElementById('prod-factor').value = '';
+  document.getElementById('prod-estado').value = 'ACTIVO';
+  document.getElementById('prod-vinculo-codigo').value = '';
+  document.getElementById('prod-vinculo-nombre').value = '';
+  onTipoCambio();
+  document.getElementById('card-prod-form').style.display = 'block';
+  document.getElementById('card-prod-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function abrirFormEditarProducto(p) {
+  prodEstado.modoEdicion = true;
+  prodEstado.productoEditando = p;
+  prodEstado.filaEditando = p.fila;
+  prodEstado.vinculoSeleccionado = p.vinculo ? prodEstado.todosProductos.find(function(x) { return x.codigo === p.vinculo; }) : null;
+  document.getElementById('prod-form-title').textContent = 'Editar Producto';
+  document.getElementById('prod-codigo').value = p.codigo;
+  document.getElementById('prod-nombre').value = p.nombre;
+  document.getElementById('prod-unidad').value = p.unidad;
+  document.getElementById('prod-precio').value = p.precio;
+  document.getElementById('prod-costo').value = p.costo;
+  document.getElementById('prod-tipo').value = p.tipo || 'UNIDAD';
+  document.getElementById('prod-factor').value = p.factor || '';
+  document.getElementById('prod-estado').value = p.estado || 'ACTIVO';
+  if (prodEstado.vinculoSeleccionado) {
+    document.getElementById('prod-vinculo-codigo').value = prodEstado.vinculoSeleccionado.codigo;
+    document.getElementById('prod-vinculo-nombre').value = prodEstado.vinculoSeleccionado.nombre;
+  } else {
+    document.getElementById('prod-vinculo-codigo').value = '';
+    document.getElementById('prod-vinculo-nombre').value = '';
+  }
+  onTipoCambio();
+  document.getElementById('card-prod-form').style.display = 'block';
+  document.getElementById('card-prod-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cerrarFormProducto() {
+  document.getElementById('card-prod-form').style.display = 'none';
+  prodEstado.modoEdicion = false;
+  prodEstado.productoEditando = null;
+}
+
+function onTipoCambio() {
+  var tipo = document.getElementById('prod-tipo').value;
+  var esPaquete = tipo === 'PAQUETE';
+  document.getElementById('prod-factor-group').style.display = esPaquete ? 'block' : 'none';
+  document.getElementById('prod-vinculo-group').style.display = 'block'; // siempre visible
+}
+
+function generarCodigoPreview() {
+  if (prodEstado.modoEdicion) return; // no cambiar código al editar
+  var nombre = document.getElementById('prod-nombre').value.trim();
+  if (!nombre) { document.getElementById('prod-codigo').value = ''; return; }
+  var palabras = nombre.split(/\s+/);
+  var prefijo = palabras.slice(0, 3).map(function(p) { return p[0].toUpperCase(); }).join('');
+  // Generar número correlativo evitando colisiones
+  var num = prodEstado.todosProductos.length + 1;
+  var codigo = prefijo + String(num).padStart(3, '0');
+  // Verificar unicidad
+  while (prodEstado.todosProductos.find(function(p) { return p.codigo === codigo; })) {
+    num++;
+    codigo = prefijo + String(num).padStart(3, '0');
+  }
+  document.getElementById('prod-codigo').value = codigo;
+}
+
+// ============================================================
+// PRODUCTOS — SELECTOR DE VÍNCULO
+// ============================================================
+function abrirSelectorVinculo() {
+  document.getElementById('modal-vinculo').style.display = 'flex';
+  document.getElementById('vinculo-search').value = '';
+  filtrarSelectorVinculo('');
+}
+
+function cerrarSelectorVinculo() {
+  document.getElementById('modal-vinculo').style.display = 'none';
+}
+
+function filtrarSelectorVinculo(q) {
+  var ql = q.toLowerCase().trim();
+  var lista = prodEstado.todosProductos.filter(function(p) {
+    if (prodEstado.productoEditando && p.codigo === prodEstado.productoEditando.codigo) return false;
+    if (!ql) return true;
+    return p.nombre.toLowerCase().indexOf(ql) !== -1 || p.codigo.toLowerCase().indexOf(ql) !== -1;
+  }).slice(0, 50);
+  var el = document.getElementById('vinculo-lista');
+  el.innerHTML = lista.map(function(p) {
+    return '<div class="result-item" onclick="seleccionarVinculo(' + JSON.stringify(p).replace(/"/g,'&quot;') + ')">' +
+      '<div class="prod-name">' + esc(p.nombre) + '</div>' +
+      '<div class="prod-meta">' + esc(p.codigo) + ' · ' + esc(p.tipo) + ' · S/ ' + p.precio.toFixed(2) + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function seleccionarVinculo(p) {
+  prodEstado.vinculoSeleccionado = p;
+  document.getElementById('prod-vinculo-codigo').value = p.codigo;
+  document.getElementById('prod-vinculo-nombre').value = p.nombre;
+  cerrarSelectorVinculo();
+}
+
+function quitarVinculo() {
+  prodEstado.vinculoSeleccionado = null;
+  document.getElementById('prod-vinculo-codigo').value = '';
+  document.getElementById('prod-vinculo-nombre').value = '';
+}
+
+// ============================================================
+// PRODUCTOS — GUARDAR (nuevo o editar)
+// ============================================================
+function guardarProducto() {
+  var nombre = document.getElementById('prod-nombre').value.trim();
+  var unidad = document.getElementById('prod-unidad').value.trim();
+  var precio = parseFloat(document.getElementById('prod-precio').value) || 0;
+  var costo  = parseFloat(document.getElementById('prod-costo').value) || 0;
+  var tipo   = document.getElementById('prod-tipo').value;
+  var factor = parseInt(document.getElementById('prod-factor').value) || 1;
+  var estadoProd = document.getElementById('prod-estado').value;
+  var vinculo = prodEstado.vinculoSeleccionado ? prodEstado.vinculoSeleccionado.codigo : '';
+  var codigo  = document.getElementById('prod-codigo').value.trim();
+
+  if (!nombre) { toast('El nombre es obligatorio', 'error'); return; }
+  if (!codigo) { toast('Error generando código', 'error'); return; }
+
+  var btn = document.getElementById('btn-guardar-prod');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+
+  var hoja = estado.config.hojaProductos;
+  var fila = [codigo, nombre, unidad,
+    numStr(precio), numStr(costo),
+    tipo, tipo === 'PAQUETE' ? String(factor) : '1',
+    vinculo, estadoProd];
+
+  var promesa;
+  if (prodEstado.modoEdicion && prodEstado.filaEditando) {
+    // Actualizar fila existente
+    var rango = hoja + '!A' + prodEstado.filaEditando + ':I' + prodEstado.filaEditando;
+    var url = 'https://sheets.googleapis.com/v4/spreadsheets/' +
+      encodeURIComponent(estado.config.sheetId) +
+      '/values/' + encodeURIComponent(rango) + '?valueInputOption=USER_ENTERED';
+    promesa = fetch(url, {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [fila] })
+    }).then(function(r) { return r.json(); });
+  } else {
+    // Agregar fila nueva
+    promesa = sheetsAppend(hoja + '!A:I', [fila]);
+  }
+
+  promesa.then(function(resp) {
+    if (resp.error) throw new Error(resp.error.message);
+
+    // Si hay vínculo, actualizar también el campo Vínculo del producto vinculado
+    if (vinculo) {
+      var prodVinculado = prodEstado.todosProductos.find(function(p) { return p.codigo === vinculo; });
+      if (prodVinculado && prodVinculado.fila) {
+        var rangoV = hoja + '!H' + prodVinculado.fila;
+        return fetch('https://sheets.googleapis.com/v4/spreadsheets/' +
+          encodeURIComponent(estado.config.sheetId) +
+          '/values/' + encodeURIComponent(rangoV) + '?valueInputOption=USER_ENTERED', {
+          method: 'PUT',
+          headers: { 'Authorization': 'Bearer ' + estado.tokenAcceso, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: [[codigo]] })
+        });
+      }
+    }
+  })
+  .then(function() {
+    toast(prodEstado.modoEdicion ? 'Producto actualizado ✓' : 'Producto creado ✓', 'success');
+    cerrarFormProducto();
+    // Recargar catálogo completo
+    cargarPanelProductos();
+    cargarProductos(); // actualizar también la lista de ventas
+  })
+  .catch(function(e) {
+    toast('Error: ' + e.message, 'error');
+  })
+  .finally(function() {
+    btn.disabled = false;
+    btn.textContent = 'Guardar producto';
   });
 }
 
