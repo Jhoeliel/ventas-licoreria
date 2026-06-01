@@ -639,25 +639,44 @@ window.onload = function() {
   }
   // Recuperar email desde sessionStorage o localStorage como respaldo
   var emailFinal = emailGuardado || localStorage.getItem('dcafiro_user_email') || '';
-  if (tokenGuardado && emailFinal) {
+  if (tokenGuardado) {
     estado.tokenAcceso = tokenGuardado;
-    estado.usuario = emailFinal;
-    if (!emailGuardado) sessionStorage.setItem('user_email', emailFinal);
     estado.tokenExpira = tokenExpira;
-    // Si el token ya expiró, renovar al entrar
     var ahora = Date.now();
-    if (tokenExpira && tokenExpira - ahora < 5 * 60 * 1000) {
-      // Expira en menos de 5 min o ya expiró — inicializar cliente para renovar
-      // Mostrar app igual, la renovación ocurrirá en background
-    } else if (tokenExpira) {
-      // Programar renovación para cuando falten 5 minutos
+    if (tokenExpira) {
       var renovarEn = tokenExpira - ahora - (5 * 60 * 1000);
       if (renovarEn > 0) {
         clearTimeout(estado._renovarTimer);
         estado._renovarTimer = setTimeout(renovarTokenSilencioso, renovarEn);
       }
     }
-    mostrarApp();
+    if (emailFinal) {
+      // Email disponible — entrar directamente
+      estado.usuario = emailFinal;
+      if (!emailGuardado) sessionStorage.setItem('user_email', emailFinal);
+      mostrarApp();
+    } else {
+      // Token existe pero no hay email guardado — recuperarlo de Google
+      fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { 'Authorization': 'Bearer ' + tokenGuardado }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(info) {
+        if (info.email) {
+          estado.usuario = info.email;
+          sessionStorage.setItem('user_email', info.email);
+          localStorage.setItem('dcafiro_user_email', info.email);
+          mostrarApp();
+        } else {
+          // Token inválido — mostrar login
+          document.getElementById('login-screen').style.display = 'flex';
+        }
+      })
+      .catch(function() {
+        // Error recuperando email — mostrar login
+        document.getElementById('login-screen').style.display = 'flex';
+      });
+    }
   }
   var hoy = new Date().toISOString().slice(0,10);
   document.getElementById('reporte-fecha-desde').value = hoy;
@@ -768,30 +787,32 @@ function mostrarApp() {
 }
 
 function cargarRolUsuario() {
+  // Asegurar que el email está disponible de cualquier fuente posible
   var email = estado.usuario || sessionStorage.getItem('user_email') || localStorage.getItem('dcafiro_user_email') || '';
-  console.log('[ROL] Buscando rol para email:', email);
+  // Si aún no hay email, intentar leerlo del badge visible en pantalla
+  if (!email) {
+    var badge = document.getElementById('user-email-badge');
+    if (badge) email = badge.textContent.trim();
+  }
+  // Asegurar que estado.usuario esté sincronizado
+  if (email && !estado.usuario) {
+    estado.usuario = email;
+  }
   return sheetsGet('Usuarios!A:B')
   .then(function(data) {
-    console.log('[ROL] Respuesta hoja Usuarios:', JSON.stringify(data));
     var rol = 'OPERADOR';
     if (data.values && data.values.length > 1) {
       for (var i = 1; i < data.values.length; i++) {
         var fila = data.values[i];
-        console.log('[ROL] Comparando fila ' + i + ':', fila[0], 'vs', email);
         if (fila[0] && fila[0].trim().toLowerCase() === email.toLowerCase()) {
           rol = (fila[1] || '').trim().toUpperCase();
-          console.log('[ROL] Match encontrado! Rol:', rol);
           break;
         }
       }
-    } else {
-      console.log('[ROL] Hoja Usuarios vacía o sin datos');
     }
     estado.rolUsuario = (rol === 'ADMIN' || rol === 'ADMINISTRADOR') ? 'ADMIN' : 'OPERADOR';
-    console.log('[ROL] Rol final asignado:', estado.rolUsuario);
   })
-  .catch(function(e) {
-    console.error('[ROL] Error al leer hoja Usuarios:', e);
+  .catch(function() {
     estado.rolUsuario = 'OPERADOR';
   });
 }
