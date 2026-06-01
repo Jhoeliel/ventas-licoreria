@@ -768,24 +768,30 @@ function mostrarApp() {
 }
 
 function cargarRolUsuario() {
-  // Lee la hoja Usuarios y determina el rol del usuario actual
+  var email = estado.usuario || sessionStorage.getItem('user_email') || localStorage.getItem('dcafiro_user_email') || '';
+  console.log('[ROL] Buscando rol para email:', email);
   return sheetsGet('Usuarios!A:B')
   .then(function(data) {
-    var email = estado.usuario || '';
-    var rol = 'OPERADOR'; // por defecto
+    console.log('[ROL] Respuesta hoja Usuarios:', JSON.stringify(data));
+    var rol = 'OPERADOR';
     if (data.values && data.values.length > 1) {
       for (var i = 1; i < data.values.length; i++) {
         var fila = data.values[i];
+        console.log('[ROL] Comparando fila ' + i + ':', fila[0], 'vs', email);
         if (fila[0] && fila[0].trim().toLowerCase() === email.toLowerCase()) {
           rol = (fila[1] || '').trim().toUpperCase();
+          console.log('[ROL] Match encontrado! Rol:', rol);
           break;
         }
       }
+    } else {
+      console.log('[ROL] Hoja Usuarios vacía o sin datos');
     }
     estado.rolUsuario = (rol === 'ADMIN' || rol === 'ADMINISTRADOR') ? 'ADMIN' : 'OPERADOR';
+    console.log('[ROL] Rol final asignado:', estado.rolUsuario);
   })
-  .catch(function() {
-    // Si no existe la hoja Usuarios, asumir OPERADOR por seguridad
+  .catch(function(e) {
+    console.error('[ROL] Error al leer hoja Usuarios:', e);
     estado.rolUsuario = 'OPERADOR';
   });
 }
