@@ -1758,8 +1758,12 @@ function renderListaStock(lista) {
 
   var html = '';
 
-  // Tarjetas de totales
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">' +
+  // Tarjetas de totales — 3 columnas
+  var totalMargen = totalProyeccion - totalValor;
+  var totalMargenPct = totalValor > 0 ? ((totalMargen / totalValor) * 100).toFixed(1) : '—';
+  var margenColor = totalMargen >= 0 ? '#22c55e' : 'var(--danger)';
+
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">' +
     '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;">' +
       '<div style="font-size:10px;color:var(--text2);margin-bottom:2px;">VALOR EN INVENTARIO</div>' +
       '<div style="font-family:var(--mono);font-size:15px;color:var(--warn);">S/ ' + totalValor.toFixed(2) + '</div>' +
@@ -1768,11 +1772,12 @@ function renderListaStock(lista) {
       '<div style="font-size:10px;color:var(--text2);margin-bottom:2px;">PROYECCIÓN DE VENTA</div>' +
       '<div style="font-family:var(--mono);font-size:15px;color:#22c55e;">S/ ' + totalProyeccion.toFixed(2) + '</div>' +
     '</div>' +
+    '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;">' +
+      '<div style="font-size:10px;color:var(--text2);margin-bottom:2px;">MARGEN TOTAL</div>' +
+      '<div style="font-family:var(--mono);font-size:15px;color:' + margenColor + ';">S/ ' + totalMargen.toFixed(2) + '</div>' +
+      '<div style="font-size:11px;color:' + margenColor + ';">' + (totalMargenPct !== '—' ? totalMargenPct + '%' : '—') + '</div>' +
+    '</div>' +
   '</div>';
-
-  // Calcular margen total
-  var totalMargen = totalProyeccion - totalValor;
-  var totalMargenPct = totalValor > 0 ? ((totalMargen / totalValor) * 100).toFixed(1) : '—';
 
   // Tabla
   html += '<div style="overflow-x:auto;">';
