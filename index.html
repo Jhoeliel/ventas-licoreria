@@ -1770,6 +1770,10 @@ function renderListaStock(lista) {
     '</div>' +
   '</div>';
 
+  // Calcular margen total
+  var totalMargen = totalProyeccion - totalValor;
+  var totalMargenPct = totalValor > 0 ? ((totalMargen / totalValor) * 100).toFixed(1) : '—';
+
   // Tabla
   html += '<div style="overflow-x:auto;">';
   html += '<table><thead><tr>' +
@@ -1777,6 +1781,8 @@ function renderListaStock(lista) {
     '<th class="td-num">Stock</th>' +
     '<th class="td-num">Valor Inv. S/</th>' +
     '<th class="td-num">Proy. Venta S/</th>' +
+    '<th class="td-num">Margen S/</th>' +
+    '<th class="td-num">Margen %</th>' +
   '</tr></thead><tbody>';
 
   listaInventario.forEach(function(p) {
@@ -1784,8 +1790,11 @@ function renderListaStock(lista) {
     var stockNum = stock !== undefined ? stock : 0;
     var stockStr = stock === undefined ? '—' : stock.toFixed(2);
     var badgeClass = stock === undefined ? 'zero' : (stock <= 0 ? 'zero' : (stock < 5 ? 'low' : 'ok'));
-    var valoriz = (stockNum * p.costo).toFixed(2);
-    var proyecc = (stockNum * p.precio).toFixed(2);
+    var valorizNum = stockNum * p.costo;
+    var proyeccNum = stockNum * p.precio;
+    var margenNum = proyeccNum - valorizNum;
+    var margenPct = valorizNum > 0 ? ((margenNum / valorizNum) * 100).toFixed(1) + '%' : '—';
+    var margenColor = margenNum >= 0 ? '#22c55e' : 'var(--danger)';
     var esPaqueteIndep = p.tipo === 'PAQUETE' && !p.vinculo;
     var seleccionado = stockEstado.productoSeleccionado && stockEstado.productoSeleccionado.codigo === p.codigo;
 
@@ -1799,17 +1808,22 @@ function renderListaStock(lista) {
       '<td class="td-num">' +
         '<span class="stock-badge ' + badgeClass + '">' + stockStr + '</span>' +
       '</td>' +
-      '<td class="td-num" style="color:var(--warn);font-family:var(--mono);">' + valoriz + '</td>' +
-      '<td class="td-num" style="color:#22c55e;font-family:var(--mono);">' + proyecc + '</td>' +
+      '<td class="td-num" style="color:var(--warn);font-family:var(--mono);">' + valorizNum.toFixed(2) + '</td>' +
+      '<td class="td-num" style="color:#22c55e;font-family:var(--mono);">' + proyeccNum.toFixed(2) + '</td>' +
+      '<td class="td-num" style="color:' + margenColor + ';font-family:var(--mono);">' + margenNum.toFixed(2) + '</td>' +
+      '<td class="td-num" style="color:' + margenColor + ';font-family:var(--mono);">' + margenPct + '</td>' +
     '</tr>';
   });
 
   // Fila de totales
+  var totalMargenColor = totalMargen >= 0 ? '#22c55e' : 'var(--danger)';
   html += '<tr class="totals-row">' +
     '<td><b>TOTAL</b></td>' +
     '<td></td>' +
     '<td class="td-num" style="color:var(--warn);"><b>' + totalValor.toFixed(2) + '</b></td>' +
     '<td class="td-num" style="color:#22c55e;"><b>' + totalProyeccion.toFixed(2) + '</b></td>' +
+    '<td class="td-num" style="color:' + totalMargenColor + ';"><b>' + totalMargen.toFixed(2) + '</b></td>' +
+    '<td class="td-num" style="color:' + totalMargenColor + ';"><b>' + totalMargenPct + (totalMargenPct !== '—' ? '%' : '') + '</b></td>' +
   '</tr>';
 
   html += '</tbody></table></div>';
