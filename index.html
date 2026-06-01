@@ -597,7 +597,7 @@
 // CONFIGURACIÓN — cambia estos valores
 // ============================================================
 var CLIENT_ID = '1087716265745-or6sjvjse35gtvs4ammj51keqbh3av9j.apps.googleusercontent.com';
-var SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+var SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email openid';
 
 // ============================================================
 // ESTADO
@@ -722,19 +722,35 @@ function iniciarLogin() {
       }
       guardarToken(resp);
       if (!estado.usuario) {
-        // Primera vez: obtener email
-        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { 'Authorization': 'Bearer ' + resp.access_token }
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(info) {
-          estado.usuario = info.email || '';
-          if (estado.usuario) {
-            sessionStorage.setItem('user_email', estado.usuario);
-            localStorage.setItem('dcafiro_user_email', estado.usuario);
-          }
+        // Obtener email desde el id_token (JWT) sin llamada extra a userinfo
+        var email = '';
+        if (resp.id_token) {
+          try {
+            var payload = JSON.parse(atob(resp.id_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+            email = payload.email || '';
+          } catch(e) {}
+        }
+        if (email) {
+          estado.usuario = email;
+          sessionStorage.setItem('user_email', email);
+          localStorage.setItem('dcafiro_user_email', email);
           mostrarApp();
-        });
+        } else {
+          // Fallback: intentar userinfo solo si no hay id_token
+          fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { 'Authorization': 'Bearer ' + resp.access_token }
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(info) {
+            estado.usuario = info.email || '';
+            if (estado.usuario) {
+              sessionStorage.setItem('user_email', estado.usuario);
+              localStorage.setItem('dcafiro_user_email', estado.usuario);
+            }
+            mostrarApp();
+          })
+          .catch(function() { mostrarApp(); });
+        }
       }
       // Si es renovación silenciosa, solo actualizar token (usuario ya está en app)
     }
