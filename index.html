@@ -770,7 +770,15 @@ function cerrarSesion() {
 function mostrarApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
-  document.getElementById('user-email-badge').textContent = estado.usuario;
+
+  // Asegurar email antes de cualquier otra operación
+  var email = estado.usuario || sessionStorage.getItem('user_email') || localStorage.getItem('dcafiro_user_email') || '';
+  if (email && !estado.usuario) {
+    estado.usuario = email;
+    sessionStorage.setItem('user_email', email);
+  }
+  document.getElementById('user-email-badge').textContent = estado.usuario || '';
+
   if (estado.config.sheetId) {
     cargarConfigRemota().then(function() {
       return cargarRolUsuario();
@@ -780,24 +788,18 @@ function mostrarApp() {
       asegurarEncabezadosVentas();
     });
   } else {
-    // Sin sheetId aún — mostrar como operador hasta que se configure
     estado.rolUsuario = 'OPERADOR';
     aplicarRol();
   }
 }
 
 function cargarRolUsuario() {
-  // Asegurar que el email está disponible de cualquier fuente posible
-  var email = estado.usuario || sessionStorage.getItem('user_email') || localStorage.getItem('dcafiro_user_email') || '';
-  // Si aún no hay email, intentar leerlo del badge visible en pantalla
-  if (!email) {
-    var badge = document.getElementById('user-email-badge');
-    if (badge) email = badge.textContent.trim();
-  }
-  // Asegurar que estado.usuario esté sincronizado
-  if (email && !estado.usuario) {
-    estado.usuario = email;
-  }
+  var email = estado.usuario
+    || sessionStorage.getItem('user_email')
+    || localStorage.getItem('dcafiro_user_email')
+    || (document.getElementById('user-email-badge') ? document.getElementById('user-email-badge').textContent.trim() : '')
+    || '';
+  if (email && !estado.usuario) estado.usuario = email;
   return sheetsGet('Usuarios!A:B')
   .then(function(data) {
     var rol = 'OPERADOR';
