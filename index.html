@@ -639,43 +639,59 @@ window.onload = function() {
   }
   // Recuperar email desde sessionStorage o localStorage como respaldo
   var emailFinal = emailGuardado || localStorage.getItem('dcafiro_user_email') || '';
-  if (tokenGuardado) {
+  if (tokenGuardado && emailFinal) {
     estado.tokenAcceso = tokenGuardado;
     estado.tokenExpira = tokenExpira;
+    estado.usuario = emailFinal;
+    if (!emailGuardado) sessionStorage.setItem('user_email', emailFinal);
+
     var ahora = Date.now();
-    if (tokenExpira) {
+    var tokenExpirado = !tokenExpira || (tokenExpira - ahora) < 0;
+    var tokenPorExpirar = tokenExpira && (tokenExpira - ahora) < 5 * 60 * 1000;
+
+    if (tokenExpirado || tokenPorExpirar) {
+      // Token expirado o por expirar — renovar primero, luego entrar
+      // Inicializar cliente OAuth para renovación silenciosa
+      if (typeof google !== 'undefined') {
+        estado.tokenCliente = google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: function(resp) {
+            if (!resp.error) {
+              guardarToken(resp);
+            }
+            // Entrar a la app independientemente del resultado
+            // sheetsGet manejará reintentos si el token sigue inválido
+            mostrarApp();
+          }
+        });
+        estado.tokenCliente.requestAccessToken({ prompt: '' });
+      } else {
+        // Google Identity no cargó aún — esperar y reintentar
+        setTimeout(function() {
+          if (typeof google !== 'undefined') {
+            estado.tokenCliente = google.accounts.oauth2.initTokenClient({
+              client_id: CLIENT_ID,
+              scope: SCOPES,
+              callback: function(resp) {
+                if (!resp.error) guardarToken(resp);
+                mostrarApp();
+              }
+            });
+            estado.tokenCliente.requestAccessToken({ prompt: '' });
+          } else {
+            mostrarApp(); // entrar de todas formas
+          }
+        }, 1500);
+      }
+    } else {
+      // Token vigente — programar renovación futura y entrar
       var renovarEn = tokenExpira - ahora - (5 * 60 * 1000);
       if (renovarEn > 0) {
         clearTimeout(estado._renovarTimer);
         estado._renovarTimer = setTimeout(renovarTokenSilencioso, renovarEn);
       }
-    }
-    if (emailFinal) {
-      // Email disponible — entrar directamente
-      estado.usuario = emailFinal;
-      if (!emailGuardado) sessionStorage.setItem('user_email', emailFinal);
       mostrarApp();
-    } else {
-      // Token existe pero no hay email guardado — recuperarlo de Google
-      fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { 'Authorization': 'Bearer ' + tokenGuardado }
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(info) {
-        if (info.email) {
-          estado.usuario = info.email;
-          sessionStorage.setItem('user_email', info.email);
-          localStorage.setItem('dcafiro_user_email', info.email);
-          mostrarApp();
-        } else {
-          // Token inválido — mostrar login
-          document.getElementById('login-screen').style.display = 'flex';
-        }
-      })
-      .catch(function() {
-        // Error recuperando email — mostrar login
-        document.getElementById('login-screen').style.display = 'flex';
-      });
     }
   }
   var hoy = new Date().toISOString().slice(0,10);
