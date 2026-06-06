@@ -327,9 +327,19 @@
             <input type="number" id="input-cantidad" min="0.01" step="0.01" placeholder="0" oninput="actualizarRef()">
           </div>
           <div class="input-group">
-            <label>Importe S/ (manual)</label>
-            <input type="number" id="input-importe" min="0" step="0.01" placeholder="0.00" oninput="this.dataset.modificado='1'">
+            <label>Precio unit. S/ (manual)</label>
+            <input type="number" id="input-importe" min="0" step="0.01" placeholder="0.00" oninput="this.dataset.modificado='1'; actualizarRef()">
             <div class="ref-price" id="ref-price"></div>
+          </div>
+        </div>
+        <div class="inputs-row" style="margin-bottom:12px;">
+          <div class="input-group">
+            <label>Descuento S/</label>
+            <input type="number" id="input-descuento" min="0" step="0.01" placeholder="0.00" oninput="actualizarRef()">
+          </div>
+          <div class="input-group">
+            <label>Total a cobrar S/</label>
+            <input type="number" id="input-total" readonly style="opacity:.7;cursor:not-allowed;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--accent2);font-family:var(--mono);font-size:14px;width:100%;" placeholder="0.00">
           </div>
         </div>
         <button class="btn btn-primary btn-full" id="btn-registrar" onclick="registrarVenta()">Registrar Venta</button>
@@ -958,7 +968,7 @@ function asegurarEncabezadosVentas() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          values: [['Timestamp','Fecha','Hora','Usuario','Código','Nombre','Unidad','Cantidad','Importe','Ref.Calculado','Estado','Ref.Anulacion','Motivo']]
+          values: [['Timestamp','Fecha','Hora','Usuario','Código','Nombre','Unidad','Cantidad','Importe','Ref.Calculado','Estado','Ref.Anulacion','Motivo','Descuento']]
         })
       });
     });
@@ -1255,6 +1265,8 @@ function seleccionarProducto(p) {
   imp.value = '';
   imp.dataset.modificado = '';
   document.getElementById('ref-price').textContent = '';
+  document.getElementById('input-descuento').value = '';
+  document.getElementById('input-total').value = '';
   document.getElementById('input-cantidad').focus();
   // Scroll al card de inputs
   document.getElementById('card-inputs').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1274,15 +1286,21 @@ function actualizarRef() {
   var qty = parseFloat(document.getElementById('input-cantidad').value);
   if (isNaN(qty) || qty <= 0) {
     document.getElementById('ref-price').textContent = '';
+    document.getElementById('input-total').value = '';
     return;
   }
-  var ref = (qty * p.precio).toFixed(2);
-  document.getElementById('ref-price').textContent = 'Precio unitario: S/ ' + p.precio.toFixed(2);
-  // Auto-rellenar importe si está vacío o si el usuario no lo ha modificado manualmente
+  // Auto-rellenar precio unitario si no fue modificado manualmente
   var inputImporte = document.getElementById('input-importe');
   if (!inputImporte.dataset.modificado) {
-    inputImporte.value = ref;
+    inputImporte.value = p.precio.toFixed(2);
   }
+  var precioUnit = parseFloat(inputImporte.value) || 0;
+  var subtotal = qty * precioUnit;
+  var descuento = parseFloat(document.getElementById('input-descuento').value) || 0;
+  var total = Math.max(0, subtotal - descuento);
+  document.getElementById('ref-price').textContent =
+    'Subtotal: S/ ' + subtotal.toFixed(2) + (descuento > 0 ? '  −  Desc: S/ ' + descuento.toFixed(2) : '');
+  document.getElementById('input-total').value = total.toFixed(2);
 }
 
 // ============================================================
@@ -1292,9 +1310,14 @@ function registrarVenta() {
   var p = estado.productoSeleccionado;
   if (!p) { toast('Selecciona un producto', 'error'); return; }
   var cantidad = parseFloat(document.getElementById('input-cantidad').value);
-  var importe = parseFloat(document.getElementById('input-importe').value);
+  var precioUnit = parseFloat(document.getElementById('input-importe').value) || 0;
+  var descuento = parseFloat(document.getElementById('input-descuento').value) || 0;
+  var total = parseFloat(document.getElementById('input-total').value);
   if (isNaN(cantidad) || cantidad <= 0) { toast('Ingresa una cantidad válida', 'error'); return; }
-  if (isNaN(importe) || importe < 0) { toast('Ingresa un importe válido', 'error'); return; }
+  if (isNaN(total) || total < 0) { toast('Ingresa un importe válido', 'error'); return; }
+  if (descuento < 0) { toast('El descuento no puede ser negativo', 'error'); return; }
+  var subtotal = cantidad * precioUnit;
+  if (descuento > subtotal) { toast('El descuento no puede ser mayor al subtotal', 'error'); return; }
 
   // Asegurar email siempre disponible
   var emailUsuario = estado.usuario || sessionStorage.getItem('user_email') || localStorage.getItem('dcafiro_user_email') || '';
@@ -1305,7 +1328,7 @@ function registrarVenta() {
   var fechaInput = document.getElementById('venta-fecha').value;
   var fecha = fechaInput || fechaLocal(ahora);
   var hora = horaLocal(ahora);
-  var refCalc = (cantidad * p.precio).toFixed(2);
+  var refCalc = subtotal.toFixed(2); // precio sin descuento como referencia
 
   var btn = document.getElementById('btn-registrar');
   btn.disabled = true;
@@ -1316,11 +1339,11 @@ function registrarVenta() {
     timestamp, fecha, hora,
     emailUsuario,
     p.codigo, p.nombre, p.unidad,
-    numStr(cantidad), numStr(importe), numStr(refCalc),
-    'VENTA', '', ''
+    numStr(cantidad), numStr(total), numStr(refCalc),
+    'VENTA', '', '', numStr(descuento)
   ]];
 
-  sheetsAppend(hoja + '!A:M', fila)
+  sheetsAppend(hoja + '!A:N', fila)
   .then(function(resp) {
     if (resp.error) throw new Error(resp.error.message);
     toast('Venta registrada ✓', 'success');
@@ -1329,6 +1352,8 @@ function registrarVenta() {
     document.getElementById('card-inputs').style.display = 'none';
     document.getElementById('input-cantidad').value = '';
     document.getElementById('input-importe').value = '';
+    document.getElementById('input-descuento').value = '';
+    document.getElementById('input-total').value = '';
     document.getElementById('ref-price').textContent = '';
     document.getElementById('sel-name').textContent = '';
     document.getElementById('sel-meta').textContent = '';
@@ -1402,7 +1427,8 @@ function cargarHistorialHoy() {
           '</div>' +
           '<div class="venta-meta">' + (esAnulacion
             ? 'Motivo: ' + esc(f[12] || '')
-            : esc(f[4] || '') + ' · ' + esc(f[6] || '') + ' · x' + esc(f[7] || '') + ' · ' + esc(f[2] || '')) + '</div>' +
+            : esc(f[4] || '') + ' · ' + esc(f[6] || '') + ' · x' + esc(f[7] || '') + ' · ' + esc(f[2] || '') +
+              (f[13] && parseFloat(f[13]) > 0 ? ' · <span style="color:var(--warn);">Desc: S/ ' + parseFloat(f[13]).toFixed(2) + '</span>' : '')) + '</div>' +
           (esAnulada ? '<div class="venta-meta" style="color:var(--danger);">Esta venta fue anulada</div>' : '') +
         '</div>' +
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">' +
