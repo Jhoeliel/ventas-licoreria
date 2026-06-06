@@ -706,7 +706,7 @@ window.onload = function() {
       mostrarApp();
     }
   } // end if tokenGuardado && emailFinal
-  var hoy = new Date().toISOString().slice(0,10);
+  var hoy = fechaLocal(new Date());
   document.getElementById('reporte-fecha-desde').value = hoy;
   document.getElementById('reporte-fecha-hasta').value = hoy;
   document.getElementById('fecha-hoy-label').textContent = formatFecha(hoy);
@@ -1358,7 +1358,7 @@ function cargarHistorialHoy() {
       document.getElementById('historial-resumen').style.display = 'none';
       return;
     }
-    var hoy = new Date().toISOString().slice(0,10);
+    var hoy = fechaLocal(new Date());
     var emailActual = estado.usuario || sessionStorage.getItem('user_email') || '';
     var todasHoy = data.values.slice(1).filter(function(f) {
       if (f[1] !== hoy) return false;
